@@ -21,7 +21,7 @@ import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.core.runtime.transform.Marshaller;
 import software.amazon.awssdk.http.SdkHttpFullRequest;
 import software.amazon.awssdk.http.SdkHttpMethod;
-import software.amazon.awssdk.services.s3.internal.presignedurl.model.InternalPresignedUrlGetObjectRequest;
+import software.amazon.awssdk.services.s3.internal.presignedurl.model.PresignedUrlGetObjectRequestWrapper;
 import software.amazon.awssdk.utils.Validate;
 
 /**
@@ -30,16 +30,16 @@ import software.amazon.awssdk.utils.Validate;
  * and adds Range headers for partial downloads.
  */
 @SdkInternalApi
-final class PresignedUrlGetObjectRequestMarshaller implements Marshaller<InternalPresignedUrlGetObjectRequest> {
+final class PresignedUrlGetObjectRequestMarshaller implements Marshaller<PresignedUrlGetObjectRequestWrapper> {
 
     @Override
-    public SdkHttpFullRequest marshall(InternalPresignedUrlGetObjectRequest request) {
+    public SdkHttpFullRequest marshall(PresignedUrlGetObjectRequestWrapper request) {
         Validate.paramNotNull(request, "request");
         Validate.paramNotNull(request.url(), "presigned URL");
         
         try {
-            // Parse the presigned URL
-            URI uri = URI.create(request.url());
+            // Convert URL to URI
+            URI uri = request.url().toURI();
             
             // Build the HTTP request using the presigned URL directly
             SdkHttpFullRequest.Builder httpRequestBuilder = SdkHttpFullRequest.builder()

@@ -15,45 +15,50 @@
 
 package software.amazon.awssdk.services.s3.presignedurl.model;
 
+import java.net.URL;
 import org.junit.jupiter.api.Test;
+import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.presignedurl.model.PresignedUrlGetObjectRequest;
 import software.amazon.awssdk.core.ResponseBytes;
 import software.amazon.awssdk.core.sync.ResponseTransformer;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
+import software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequest;
 
 
 public class PresignedUrlTest {
     @Test
     void presignedUrlGetTest(){
-        String presignedUrl = "https://example-bucket.s3.amazonaws.com/test-object.txt?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=EXAMPLE123%2F20250101%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20250101T000000Z&X-Amz-Expires=3600&X-Amz-SignedHeaders=host&X-Amz-Signature=example1234567890abcdef";
+        // Generate a presigned URL
+        S3Presigner presigner = S3Presigner.builder()
+                                           .build();
+        GetObjectRequest getObjectRequest = GetObjectRequest.builder()
+                                                            .bucket("jency-test-bucket")
+                                                            .key("test1.txt")
+                                                            .build();
+        GetObjectPresignRequest presignRequest = GetObjectPresignRequest.builder()
+                                                                        .signatureDuration(java.time.Duration.ofDays(5))
+                                                                        .getObjectRequest(getObjectRequest)
+                                                                        .build();
+        PresignedGetObjectRequest presignedRequest = presigner.presignGetObject(presignRequest);
+        URL presignedUrl = presignedRequest.url();
+
         S3Client s3Client = S3Client.builder()
+            // .region(Region.US_WEST_2)
                                     .build();
+        PresignedUrlGetObjectRequest request = PresignedUrlGetObjectRequest.builder()
+                                                                           .presignedUrl(presignedUrl)
+                                                                           .range("bytes=0-5")
+                                                                           .build();
+
         ResponseBytes<GetObjectResponse> response = s3Client
             .presignedUrlManager()
-            .getObject(PresignedUrlGetObjectRequest.builder()
-                                                   .presignedUrl(presignedUrl)
-                                                   .range("bytes=0-5")
-                                                   .build(), ResponseTransformer.toBytes());
+            .getObject(request, ResponseTransformer.toBytes());
 
-        System.out.println("Content length: " + response.asByteArray().length);
         System.out.println("Content range: " + response.response().contentRange());
-
-
-        // // Generate a presigned URL
-        // S3Presigner presigner = S3Presigner.builder()
-        //                                    .build();
-        // GetObjectRequest getObjectRequest = GetObjectRequest.builder()
-        //                                                    .bucket("jency-test-bucket")
-        //                                                    .key("test1.txt")
-        //                                                    .build();
-        // GetObjectPresignRequest presignRequest = GetObjectPresignRequest.builder()
-        //                                                                 .signatureDuration(java.time.Duration.ofDays(5))
-        //                                                                 .getObjectRequest(getObjectRequest)
-        //                                                                 .build();
-        // PresignedGetObjectRequest presignedRequest = presigner.presignGetObject(presignRequest);
-        // String presignedUrl = presignedRequest.url().toString();
-        // System.out.println("Presigned URL: " + presignedUrl);
 
     }
 

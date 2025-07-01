@@ -120,6 +120,12 @@ public final class SdkInternalExecutionAttribute extends SdkExecutionAttribute {
         new ExecutionAttribute<>("IsDiscoveredEndpoint");
 
     /**
+     * Whether the endpoint resolution should be skipped for the request.
+     */
+    public static final ExecutionAttribute<Boolean> SKIP_ENDPOINT_RESOLUTION =
+        new ExecutionAttribute<>("SkipEndpointResolution");
+
+    /**
      * The nano time that the current API call attempt began.
      */
     public static final ExecutionAttribute<Long> API_CALL_ATTEMPT_START_NANO_TIME =

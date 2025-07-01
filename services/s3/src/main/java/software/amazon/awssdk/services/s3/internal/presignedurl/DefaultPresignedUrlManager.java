@@ -42,7 +42,7 @@ import software.amazon.awssdk.metrics.MetricPublisher;
 import software.amazon.awssdk.metrics.NoOpMetricCollector;
 import software.amazon.awssdk.protocols.xml.AwsS3ProtocolFactory;
 import software.amazon.awssdk.protocols.xml.XmlOperationMetadata;
-import software.amazon.awssdk.services.s3.internal.presignedurl.model.InternalPresignedUrlGetObjectRequest;
+import software.amazon.awssdk.services.s3.internal.presignedurl.model.PresignedUrlGetObjectRequestWrapper;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.InvalidObjectStateException;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
@@ -74,8 +74,8 @@ public final class DefaultPresignedUrlManager implements PresignedUrlManager {
                                        ResponseTransformer<GetObjectResponse, ReturnT> responseTransformer) 
                                        throws NoSuchKeyException, InvalidObjectStateException, 
                                               AwsServiceException, SdkClientException, S3Exception {
-        
-        InternalPresignedUrlGetObjectRequest internalRequest = convertToInternalRequest(presignedUrlGetObjectRequest);
+
+        PresignedUrlGetObjectRequestWrapper internalRequest = convertToInternalRequest(presignedUrlGetObjectRequest);
         
         HttpResponseHandler<GetObjectResponse> responseHandler = protocolFactory.createResponseHandler(
             GetObjectResponse::builder, new XmlOperationMetadata().withHasStreamingSuccessResponse(true));
@@ -93,8 +93,8 @@ public final class DefaultPresignedUrlManager implements PresignedUrlManager {
             SdkClientConfiguration updatedClientConfiguration = updateSdkClientConfiguration(internalRequest, 
                 this.clientConfiguration);
             
-            ClientExecutionParams<InternalPresignedUrlGetObjectRequest, GetObjectResponse> params = 
-                new ClientExecutionParams<InternalPresignedUrlGetObjectRequest, GetObjectResponse>()
+            ClientExecutionParams<PresignedUrlGetObjectRequestWrapper, GetObjectResponse> params =
+                new ClientExecutionParams<PresignedUrlGetObjectRequestWrapper, GetObjectResponse>()
                     .withOperationName("PresignedUrlGetObject")
                     .withProtocolMetadata(PROTOCOL_METADATA)
                     .withResponseHandler(responseHandler)
@@ -146,7 +146,7 @@ public final class DefaultPresignedUrlManager implements PresignedUrlManager {
         return publishers;
     }
 
-    private SdkClientConfiguration updateSdkClientConfiguration(InternalPresignedUrlGetObjectRequest request,
+    private SdkClientConfiguration updateSdkClientConfiguration(PresignedUrlGetObjectRequestWrapper request,
                                                                 SdkClientConfiguration clientConfiguration) {
         SdkClientConfiguration.Builder configuration = clientConfiguration.toBuilder();
         configuration.option(SdkAdvancedClientOption.SIGNER, new NoOpSigner());
@@ -154,10 +154,10 @@ public final class DefaultPresignedUrlManager implements PresignedUrlManager {
         return configuration.build();
     }
 
-    private InternalPresignedUrlGetObjectRequest convertToInternalRequest(PresignedUrlGetObjectRequest request) {
-        return InternalPresignedUrlGetObjectRequest.builder()
+    private PresignedUrlGetObjectRequestWrapper convertToInternalRequest(PresignedUrlGetObjectRequest request) {
+        return PresignedUrlGetObjectRequestWrapper.builder()
                 .url(request.presignedUrl())
                 .range(request.range())
-                .buildInternal();
+                .build();
     }
 }
