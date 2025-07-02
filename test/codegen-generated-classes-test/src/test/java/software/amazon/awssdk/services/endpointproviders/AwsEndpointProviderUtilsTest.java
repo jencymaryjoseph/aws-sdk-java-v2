@@ -67,6 +67,35 @@ public class AwsEndpointProviderUtilsTest {
     }
 
     @Test
+    public void skipEndpointResolution_attrIsFalse_returnsFalse() {
+        ExecutionAttributes attrs = new ExecutionAttributes();
+        attrs.putAttribute(SdkInternalExecutionAttribute.SKIP_ENDPOINT_RESOLUTION, false);
+        assertThat(AwsEndpointProviderUtils.skipEndpointResolution(attrs)).isFalse();
+    }
+
+    @Test
+    public void skipEndpointResolution_attrIsAbsent_returnsFalse() {
+        ExecutionAttributes attrs = new ExecutionAttributes();
+        assertThat(AwsEndpointProviderUtils.skipEndpointResolution(attrs)).isFalse();
+    }
+
+    @Test
+    public void skipEndpointResolution_attrIsTrue_returnsTrue() {
+        ExecutionAttributes attrs = new ExecutionAttributes();
+        attrs.putAttribute(SdkInternalExecutionAttribute.SKIP_ENDPOINT_RESOLUTION, true);
+        assertThat(AwsEndpointProviderUtils.skipEndpointResolution(attrs)).isTrue();
+    }
+
+    @Test
+    public void endpointIsDiscovered_delegatesToSkipEndpointResolution() {
+        ExecutionAttributes attrs = new ExecutionAttributes();
+        attrs.putAttribute(SdkInternalExecutionAttribute.SKIP_ENDPOINT_RESOLUTION, true);
+        // Both methods should return the same result since endpointIsDiscovered delegates
+        assertThat(AwsEndpointProviderUtils.endpointIsDiscovered(attrs)).isTrue();
+        assertThat(AwsEndpointProviderUtils.skipEndpointResolution(attrs)).isTrue();
+    }
+
+    @Test
     public void disableHostPrefixInjection_attrIsFalse_returnsFalse() {
         ExecutionAttributes attrs = new ExecutionAttributes();
         attrs.putAttribute(SdkInternalExecutionAttribute.DISABLE_HOST_PREFIX_INJECTION, false);
