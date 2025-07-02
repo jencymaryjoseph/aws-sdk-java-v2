@@ -48,10 +48,13 @@ public class PresignedUrlTest {
 
         S3Client s3Client = S3Client.builder()
                                     .build();
-        PresignedUrlGetObjectRequest request = PresignedUrlGetObjectRequest.builder()
-                                                                           .presignedUrl(presignedUrl)
-                                                                           .range("bytes=0-5")
-                                                                           .build();
+        // PresignedUrlGetObjectRequest request = PresignedUrlGetObjectRequest.builder()
+        //                                                                    .presignedUrl(presignedUrl)
+        //                                                                    .range("bytes=0-5")
+        //                                                                    .build();
+        PresignedUrlGetObjectRequest request = PresignedUrlGetObjectRequest.builder(b -> b
+            .presignedUrl(presignedUrl)
+            .range("bytes=0-1023"));
 
         ResponseBytes<GetObjectResponse> response = s3Client
             .presignedUrlManager()
