@@ -16,9 +16,11 @@
 package software.amazon.awssdk.services.s3.internal.presignedurl.model;
 
 import static org.assertj.core.api.Assertions.assertThat;
+
 import java.net.URL;
 import java.util.List;
 import java.util.Map;
+import nl.jqno.equalsverifier.EqualsVerifier;
 import org.junit.jupiter.api.Test;
 import software.amazon.awssdk.core.SdkField;
 import software.amazon.awssdk.core.protocol.MarshallLocation;
@@ -26,11 +28,18 @@ import software.amazon.awssdk.core.protocol.MarshallLocation;
 
 class PresignedUrlGetObjectRequestWrapperTest {
     @Test
+    void equalsAndHashCode_shouldFollowContract() {
+        EqualsVerifier.forClass(PresignedUrlGetObjectRequestWrapper.class)
+                      .withRedefinedSuperclass()
+                      .verify();
+    }
+
+    @Test
     void basicProperties_shouldWork() throws Exception {
         PresignedUrlGetObjectRequestWrapper request = PresignedUrlGetObjectRequestWrapper.builder()
-                                                                                          .url(new URL("https://example.com"))
-                                                                                          .range("bytes=0-100")
-                                                                                          .build();
+                                                                                         .url(new URL("https://example.com"))
+                                                                                         .range("bytes=0-100")
+                                                                                         .build();
 
         assertThat(request.url()).isEqualTo(new URL("https://example.com"));
         assertThat(request.range()).isEqualTo("bytes=0-100");
@@ -39,9 +48,9 @@ class PresignedUrlGetObjectRequestWrapperTest {
     @Test
     void sdkFields_shouldReturnExpectedFields() throws Exception {
         PresignedUrlGetObjectRequestWrapper request = PresignedUrlGetObjectRequestWrapper.builder()
-                                                                                          .url(new URL("https://example.com"))
-                                                                                          .range("bytes=0-100")
-                                                                                          .build();
+                                                                                         .url(new URL("https://example.com"))
+                                                                                         .range("bytes=0-100")
+                                                                                         .build();
 
         List<SdkField<?>> fields = request.sdkFields();
 
@@ -54,22 +63,23 @@ class PresignedUrlGetObjectRequestWrapperTest {
     @Test
     void sdkFieldNameToField_shouldReturnExpectedMapping() throws Exception {
         PresignedUrlGetObjectRequestWrapper request = PresignedUrlGetObjectRequestWrapper.builder()
-                                                                                          .url(new URL("https://example.com"))
-                                                                                          .build();
+                                                                                         .url(new URL("https://example.com"))
+                                                                                         .build();
 
         Map<String, SdkField<?>> fieldMap = request.sdkFieldNameToField();
 
-        assertThat(fieldMap).hasSize(1);
-        assertThat(fieldMap).containsKey("Range");
+        assertThat(fieldMap)
+            .hasSize(1)
+            .containsKey("Range");
         assertThat(fieldMap.get("Range").memberName()).isEqualTo("Range");
     }
 
     @Test
     void rangeField_shouldMarshalCorrectly() throws Exception {
         PresignedUrlGetObjectRequestWrapper request = PresignedUrlGetObjectRequestWrapper.builder()
-                                                                                          .url(new URL("https://example.com"))
-                                                                                          .range("bytes=0-1023")
-                                                                                          .build();
+                                                                                         .url(new URL("https://example.com"))
+                                                                                         .range("bytes=0-1023")
+                                                                                         .build();
 
         // Test that the SdkField can extract the range value
         SdkField<?> rangeField = request.sdkFields().get(0);

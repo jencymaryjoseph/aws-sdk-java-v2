@@ -42,6 +42,7 @@ final class PresignedUrlGetObjectRequestMarshaller implements Marshaller<Presign
             URI uri = request.url().toURI();
             
             // Build the HTTP request using the presigned URL directly
+            System.out.println("DEBUG: PresignedUrlGetObjectRequestMarshaller - Creating request with URI: " + uri);
             SdkHttpFullRequest.Builder httpRequestBuilder = SdkHttpFullRequest.builder()
                     .method(SdkHttpMethod.GET)
                     .uri(uri);

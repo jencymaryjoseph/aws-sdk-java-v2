@@ -115,6 +115,9 @@ public final class DefaultPresignedUrlManager implements PresignedUrlManager {
                                                   DefaultChecksumAlgorithm.SHA256).build())
                     .withMarshaller(new PresignedUrlGetObjectRequestMarshaller());
             
+            System.out.println("DEBUG: DefaultPresignedUrlManager - Setting SKIP_ENDPOINT_RESOLUTION = true");
+            System.out.println("DEBUG: DefaultPresignedUrlManager - Presigned URL: " + presignedUrlGetObjectRequest.presignedUrl());
+            
             return clientHandler.execute(params, responseTransformer);
         } finally {
             metricPublishers.forEach(p -> p.publish(apiCallMetricCollector.collect()));

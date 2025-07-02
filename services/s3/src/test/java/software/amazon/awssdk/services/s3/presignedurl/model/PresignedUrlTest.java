@@ -47,7 +47,6 @@ public class PresignedUrlTest {
         URL presignedUrl = presignedRequest.url();
 
         S3Client s3Client = S3Client.builder()
-            // .region(Region.US_WEST_2)
                                     .build();
         PresignedUrlGetObjectRequest request = PresignedUrlGetObjectRequest.builder()
                                                                            .presignedUrl(presignedUrl)
