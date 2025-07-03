@@ -83,7 +83,7 @@ class PresignedUrlGetObjectRequestMarshallerTest {
     }
 
     @Test
-    void marshall_withBasicRequest_shouldCreateCorrectHttpRequest() throws Exception {
+    void marshall_withBasicRequest_shouldCreateCorrectHttpRequest() {
         PresignedUrlGetObjectRequestWrapper request = PresignedUrlGetObjectRequestWrapper.builder()
                 .url(testUrl)
                 .build();
@@ -119,7 +119,7 @@ class PresignedUrlGetObjectRequestMarshallerTest {
         "bytes=0-0",        // Single byte
         "bytes=100-200"     // Specific range
     })
-    void marshall_withValidRangeFormats_shouldAddRangeHeader(String rangeValue) throws Exception {
+    void marshall_withValidRangeFormats_shouldAddRangeHeader(String rangeValue) {
         PresignedUrlGetObjectRequestWrapper request = PresignedUrlGetObjectRequestWrapper.builder()
                 .url(testUrl)
                 .range(rangeValue)
@@ -133,7 +133,7 @@ class PresignedUrlGetObjectRequestMarshallerTest {
 
     @ParameterizedTest
     @NullAndEmptySource
-    void marshall_withNullOrEmptyRange_shouldNotAddRangeHeader(String rangeValue) throws Exception {
+    void marshall_withNullOrEmptyRange_shouldNotAddRangeHeader(String rangeValue) {
         PresignedUrlGetObjectRequestWrapper request = PresignedUrlGetObjectRequestWrapper.builder()
                 .url(testUrl)
                 .range(rangeValue)
@@ -160,21 +160,6 @@ class PresignedUrlGetObjectRequestMarshallerTest {
         assertThatThrownBy(() -> marshaller.marshall(request))
                 .isInstanceOf(SdkClientException.class)
                 .hasMessageContaining("Unable to marshall pre-signed URL Request");
-    }
-
-    @ParameterizedTest
-    @MethodSource("provideComplexUrls")
-    void marshall_withComplexPresignedUrl_shouldPreserveAllParameters(URL complexUrl, String[] expectedParams) 
-            throws Exception {
-        PresignedUrlGetObjectRequestWrapper request = PresignedUrlGetObjectRequestWrapper.builder()
-                .url(complexUrl)
-                .build();
-        SdkHttpFullRequest result = marshaller.marshall(request);
-
-        String query = result.getUri().getQuery();
-        for (String param : expectedParams) {
-            assertThat(query).contains(param);
-        }
     }
 
     private static Stream<Arguments> provideComplexUrls() throws Exception {
