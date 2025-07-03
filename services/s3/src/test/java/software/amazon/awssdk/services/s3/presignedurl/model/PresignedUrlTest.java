@@ -17,6 +17,7 @@ package software.amazon.awssdk.services.s3.presignedurl.model;
 
 import java.net.URL;
 import org.junit.jupiter.api.Test;
+import software.amazon.awssdk.auth.credentials.AnonymousCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
@@ -46,17 +47,22 @@ public class PresignedUrlTest {
         PresignedGetObjectRequest presignedRequest = presigner.presignGetObject(presignRequest);
         URL presignedUrl = presignedRequest.url();
 
-        S3Client s3Client = S3Client.builder()
-                                    .build();
-        // PresignedUrlGetObjectRequest request = PresignedUrlGetObjectRequest.builder()
-        //                                                                    .presignedUrl(presignedUrl)
-        //                                                                    .range("bytes=0-5")
-        //                                                                    .build();
-        PresignedUrlGetObjectRequest request = PresignedUrlGetObjectRequest.builder(b -> b
-            .presignedUrl(presignedUrl)
-            .range("bytes=0-1023"));
+        S3Client s3Client = S3Client.builder().build();
 
-        ResponseBytes<GetObjectResponse> response = s3Client
+        PresignedUrlGetObjectRequest request = PresignedUrlGetObjectRequest.builder()
+                                                                           .presignedUrl(presignedUrl)
+                                                                           .range("bytes=0-5")
+                                                                           .build();
+        // PresignedUrlGetObjectRequest request = PresignedUrlGetObjectRequest.builder(b -> b
+        //     .presignedUrl(presignedUrl)
+        //     .range("bytes=0-1023"));
+
+        S3Client s3Client2 = S3Client.builder()
+            .region(Region.US_WEST_2)
+                                     .credentialsProvider(AnonymousCredentialsProvider.create())
+                                     .build();
+
+        ResponseBytes<GetObjectResponse> response = s3Client2
             .presignedUrlManager()
             .getObject(request, ResponseTransformer.toBytes());
 

@@ -19,12 +19,10 @@ import static software.amazon.awssdk.core.client.config.SdkClientOption.SIGNER_O
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import software.amazon.awssdk.annotations.SdkInternalApi;
 import software.amazon.awssdk.awscore.exception.AwsServiceException;
 import software.amazon.awssdk.awscore.internal.AwsProtocolMetadata;
-import software.amazon.awssdk.awscore.internal.AwsServiceProtocol;
-import software.amazon.awssdk.checksums.DefaultChecksumAlgorithm;
-import software.amazon.awssdk.core.RequestOverrideConfiguration;
 import software.amazon.awssdk.core.client.config.SdkAdvancedClientOption;
 import software.amazon.awssdk.core.client.config.SdkClientConfiguration;
 import software.amazon.awssdk.core.client.config.SdkClientOption;
@@ -33,7 +31,6 @@ import software.amazon.awssdk.core.client.handler.SyncClientHandler;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.core.http.HttpResponseHandler;
 import software.amazon.awssdk.core.interceptor.SdkInternalExecutionAttribute;
-import software.amazon.awssdk.core.interceptor.trait.HttpChecksum;
 import software.amazon.awssdk.core.metrics.CoreMetric;
 import software.amazon.awssdk.core.signer.NoOpSigner;
 import software.amazon.awssdk.core.sync.ResponseTransformer;
@@ -46,18 +43,20 @@ import software.amazon.awssdk.services.s3.internal.presignedurl.model.PresignedU
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.InvalidObjectStateException;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
-import software.amazon.awssdk.services.s3.presignedurl.model.PresignedUrlGetObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.presignedurl.PresignedUrlManager;
+import software.amazon.awssdk.services.s3.presignedurl.model.PresignedUrlGetObjectRequest;
 
+/**
+ * Default implementation of {@link PresignedUrlManager} for executing S3 operations using presigned URLs.
+ */
 @SdkInternalApi
 public final class DefaultPresignedUrlManager implements PresignedUrlManager {
     
     private final SyncClientHandler clientHandler;
     private final AwsS3ProtocolFactory protocolFactory;
     private final SdkClientConfiguration clientConfiguration;
-    private static final AwsProtocolMetadata PROTOCOL_METADATA = AwsProtocolMetadata.builder()
-            .serviceProtocol(AwsServiceProtocol.REST_XML).build();
+    private final AwsProtocolMetadata protocolMetadata;
     
     public DefaultPresignedUrlManager(SyncClientHandler clientHandler, 
                                       AwsS3ProtocolFactory protocolFactory,
@@ -66,89 +65,87 @@ public final class DefaultPresignedUrlManager implements PresignedUrlManager {
         this.clientHandler = clientHandler;
         this.protocolFactory = protocolFactory;
         this.clientConfiguration = clientConfiguration;
-
+        this.protocolMetadata = protocolMetadata;
     }
     
+    /**
+     * <p>
+     * Downloads an S3 object using a presigned URL.
+     * </p>
+     * <p>
+     * This operation uses a presigned URL that contains all necessary authentication information, eliminating the need for AWS
+     * credentials at request time. The presigned URL must be valid and not expired.
+     * </p>
+     * <p>
+     * Supports partial object downloads using HTTP Range headers. Specify the range parameter
+     * in the request to download only a portion of the object (e.g., "bytes=0-1023").
+     * </p>
+     *
+     * @param presignedUrlGetObjectRequest
+     *        The presigned URL request containing the URL and optional range parameters
+     * @param responseTransformer
+     *        Transforms the response to the desired return type. See
+     *        {@link software.amazon.awssdk.core.sync.ResponseTransformer} for pre-built implementations like
+     *        downloading to a file or converting to bytes.
+     * @param <ReturnT>
+     *        The type of the transformed response
+     * @return The transformed result of the ResponseTransformer
+     * @throws software.amazon.awssdk.services.s3.model.NoSuchKeyException
+     *         The specified object does not exist
+     * @throws software.amazon.awssdk.services.s3.model.InvalidObjectStateException
+     *         Object is archived and must be restored before retrieval
+     * @throws software.amazon.awssdk.core.exception.SdkClientException
+     *         If any client side error occurs such as network failures, invalid presigned URL, or URL expiration
+     * @throws S3Exception
+     *         Base class for all S3 service exceptions. Unknown exceptions will be thrown as an
+     *         instance of this type.
+     * @sample S3Client.PresignedUrlManager.GetObject
+     */
     @Override
     public <ReturnT> ReturnT getObject(PresignedUrlGetObjectRequest presignedUrlGetObjectRequest,
                                        ResponseTransformer<GetObjectResponse, ReturnT> responseTransformer) 
                                        throws NoSuchKeyException, InvalidObjectStateException, 
                                               AwsServiceException, SdkClientException, S3Exception {
 
-        PresignedUrlGetObjectRequestWrapper internalRequest = convertToInternalRequest(presignedUrlGetObjectRequest);
-        
         HttpResponseHandler<GetObjectResponse> responseHandler = protocolFactory.createResponseHandler(
-            GetObjectResponse::builder, new XmlOperationMetadata().withHasStreamingSuccessResponse(true));
+                GetObjectResponse::builder, new XmlOperationMetadata().withHasStreamingSuccessResponse(true));
+
         HttpResponseHandler<AwsServiceException> errorResponseHandler = protocolFactory.createErrorResponseHandler();
         
-        List<MetricPublisher> metricPublishers = resolveMetricPublishers(clientConfiguration, 
-            internalRequest.overrideConfiguration().orElse(null));
-        MetricCollector apiCallMetricCollector = metricPublishers.isEmpty() ? 
+        PresignedUrlGetObjectRequestWrapper internalRequest = PresignedUrlGetObjectRequestWrapper.builder()
+                .url(presignedUrlGetObjectRequest.presignedUrl())
+                .range(presignedUrlGetObjectRequest.range())
+                .build();
+
+        SdkClientConfiguration clientConfiguration = updateSdkClientConfiguration(internalRequest, this.clientConfiguration);
+        List<MetricPublisher> metricPublishers = Optional.ofNullable(
+            clientConfiguration.option(SdkClientOption.METRIC_PUBLISHERS))
+            .orElse(Collections.emptyList());
+        MetricCollector apiCallMetricCollector = metricPublishers.isEmpty() ?
             NoOpMetricCollector.create() : MetricCollector.create("ApiCall");
-        
         try {
             apiCallMetricCollector.reportMetric(CoreMetric.SERVICE_ID, "S3");
             apiCallMetricCollector.reportMetric(CoreMetric.OPERATION_NAME, "GetObject");
 
-            SdkClientConfiguration updatedClientConfiguration = updateSdkClientConfiguration(internalRequest, 
-                this.clientConfiguration);
-            
-            ClientExecutionParams<PresignedUrlGetObjectRequestWrapper, GetObjectResponse> params =
-                new ClientExecutionParams<PresignedUrlGetObjectRequestWrapper, GetObjectResponse>()
-                    .withOperationName("PresignedUrlGetObject")
-                    .withProtocolMetadata(PROTOCOL_METADATA)
-                    .withResponseHandler(responseHandler)
-                    .withErrorResponseHandler(errorResponseHandler)
-                    .withInput(internalRequest)
-                    .withRequestConfiguration(updatedClientConfiguration)
-                    .withMetricCollector(apiCallMetricCollector)
-                    .putExecutionAttribute(SdkInternalExecutionAttribute.SKIP_ENDPOINT_RESOLUTION, true)
-                    .putExecutionAttribute(
-                        SdkInternalExecutionAttribute.HTTP_CHECKSUM,
-                        HttpChecksum.builder()
-                            .requestChecksumRequired(false)
-                            .isRequestStreaming(false)
-                            .responseAlgorithmsV2(DefaultChecksumAlgorithm.CRC32C,
-                                                  DefaultChecksumAlgorithm.CRC32, 
-                                                  DefaultChecksumAlgorithm.CRC64NVME,
-                                                  DefaultChecksumAlgorithm.SHA1, 
-                                                  DefaultChecksumAlgorithm.SHA256).build())
-                    .withMarshaller(new PresignedUrlGetObjectRequestMarshaller());
-            
-            System.out.println("DEBUG: DefaultPresignedUrlManager - Setting SKIP_ENDPOINT_RESOLUTION = true");
-            System.out.println("DEBUG: DefaultPresignedUrlManager - Presigned URL: " + presignedUrlGetObjectRequest.presignedUrl());
-            
-            return clientHandler.execute(params, responseTransformer);
+            return clientHandler.execute(
+                    new ClientExecutionParams<PresignedUrlGetObjectRequestWrapper, GetObjectResponse>()
+                            .withOperationName("PresignedUrlGetObject")
+                            .withProtocolMetadata(protocolMetadata)
+                            .withResponseHandler(responseHandler)
+                            .withErrorResponseHandler(errorResponseHandler)
+                            .withRequestConfiguration(clientConfiguration)
+                            .withInput(internalRequest)
+                            .withMetricCollector(apiCallMetricCollector)
+                            // TODO: Deprecate IS_DISCOVERED_ENDPOINT, use SKIP_ENDPOINT_RESOLUTION for better semantics
+                            .putExecutionAttribute(SdkInternalExecutionAttribute.IS_DISCOVERED_ENDPOINT, true)
+                            .withMarshaller(new PresignedUrlGetObjectRequestMarshaller()), responseTransformer);
         } finally {
             metricPublishers.forEach(p -> p.publish(apiCallMetricCollector.collect()));
         }
     }
-    
-    // @Override
-    // public ResponseBytes<GetObjectResponse> getObjectAsBytes(PresignedUrlGetObjectRequest request) {
-    //     return getObject(request, ResponseTransformer.toBytes());
-    // }
-    //
-    // @Override
-    // public ResponseInputStream<GetObjectResponse> getObjectAsStream(PresignedUrlGetObjectRequest request) {
-    //     return getObject(request, ResponseTransformer.toInputStream());
-    // }
-    
-    private static List<MetricPublisher> resolveMetricPublishers(SdkClientConfiguration clientConfiguration,
-                                                                 RequestOverrideConfiguration requestOverrideConfiguration) {
-        List<MetricPublisher> publishers = null;
-        if (requestOverrideConfiguration != null) {
-            publishers = requestOverrideConfiguration.metricPublishers();
-        }
-        if (publishers == null || publishers.isEmpty()) {
-            publishers = clientConfiguration.option(SdkClientOption.METRIC_PUBLISHERS);
-        }
-        if (publishers == null) {
-            publishers = Collections.emptyList();
-        }
-        return publishers;
-    }
 
+    //TODO : Add and implement other getObject request flavours
+    
     private SdkClientConfiguration updateSdkClientConfiguration(PresignedUrlGetObjectRequestWrapper request,
                                                                 SdkClientConfiguration clientConfiguration) {
         SdkClientConfiguration.Builder configuration = clientConfiguration.toBuilder();
@@ -157,10 +154,4 @@ public final class DefaultPresignedUrlManager implements PresignedUrlManager {
         return configuration.build();
     }
 
-    private PresignedUrlGetObjectRequestWrapper convertToInternalRequest(PresignedUrlGetObjectRequest request) {
-        return PresignedUrlGetObjectRequestWrapper.builder()
-                .url(request.presignedUrl())
-                .range(request.range())
-                .build();
-    }
 }
