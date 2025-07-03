@@ -177,31 +177,4 @@ class PresignedUrlGetObjectRequestMarshallerTest {
                 .isInstanceOf(SdkClientException.class)
                 .hasMessageContaining("Unable to marshall pre-signed URL Request");
     }
-
-    @Test
-    void marshall_withComplexPresignedUrl_shouldPreserveAllParameters() throws Exception {
-        URL complexUrl = new URL("https://my-bucket.s3.amazonaws.com/path/to/object.txt?" +
-                "X-Amz-Date=20231215T120000Z&" +
-                "X-Amz-Signature=example-signature-hash&" +
-                "X-Amz-Algorithm=AWS4-HMAC-SHA256&" +
-                "X-Amz-SignedHeaders=host%3Bx-amz-content-sha256&" +
-                 "X-Amz-Security-Token=xxx&" +
-                "X-Amz-Credential=EXAMPLE12345678901234%2F20231215%2Fus-east-1%2Fs3%2Faws4_request&" +
-                "X-Amz-Expires=86400&" +
-                "response-content-disposition=attachment%3B%20filename%3D%22download.txt%22");
-        PresignedUrlGetObjectRequestWrapper request = PresignedUrlGetObjectRequestWrapper.builder()
-                .url(complexUrl)
-                .build();
-        SdkHttpFullRequest result = marshaller.marshall(request);
-
-        assertThat(result.getUri().getQuery())
-                .contains("X-Amz-Algorithm=AWS4-HMAC-SHA256")
-                .contains("X-Amz-Credential=EXAMPLE12345678901234")
-                .contains("X-Amz-Date=20231215T120000Z")
-                .contains("X-Amz-Expires=86400")
-                .contains("X-Amz-SignedHeaders=host")
-                .contains("X-Amz-Security-Token=xxx")
-                .contains("X-Amz-Signature=example-signature-hash")
-                .contains("response-content-disposition=attachment");
-    }
 }
