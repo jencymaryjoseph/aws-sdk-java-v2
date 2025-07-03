@@ -17,24 +17,32 @@ package software.amazon.awssdk.services.s3.internal.presignedurl;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
-import java.net.URI;
+import static org.mockito.Mockito.mock;
 import java.net.URL;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.ValueSource;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.http.SdkHttpFullRequest;
 import software.amazon.awssdk.http.SdkHttpMethod;
+import software.amazon.awssdk.protocols.xml.AwsXmlProtocolFactory;
 import software.amazon.awssdk.services.s3.internal.presignedurl.model.PresignedUrlGetObjectRequestWrapper;
 
 class PresignedUrlGetObjectRequestMarshallerTest {
 
     private PresignedUrlGetObjectRequestMarshaller marshaller;
+    private AwsXmlProtocolFactory mockProtocolFactory;
     private URL testUrl;
 
     @BeforeEach
     void setUp() throws Exception {
-        marshaller = new PresignedUrlGetObjectRequestMarshaller();
+        mockProtocolFactory = mock(AwsXmlProtocolFactory.class);
+        marshaller = new PresignedUrlGetObjectRequestMarshaller(mockProtocolFactory);
         testUrl = new URL("https://test-bucket.s3.us-east-1.amazonaws.com/test-key?" +
                 "X-Amz-Date=20231215T000000Z&" +
                 "X-Amz-Signature=example-signature&" +
@@ -62,8 +70,7 @@ class PresignedUrlGetObjectRequestMarshallerTest {
                 });
 
         // Verify query parameters are preserved
-        String query = result.getUri().getQuery();
-        assertThat(query)
+        assertThat(result.getUri().getQuery())
                 .contains("X-Amz-Date=20231215T000000Z")
                 .contains("X-Amz-Signature=example-signature")
                 .contains("X-Amz-Algorithm=AWS4-HMAC-SHA256")
@@ -75,38 +82,36 @@ class PresignedUrlGetObjectRequestMarshallerTest {
         assertThat(result.headers()).doesNotContainKey("Range");
     }
 
-    @Test
-    void marshall_withRangeVariations_shouldHandleCorrectly() throws Exception {
-        // Test with valid range
-        String rangeValue = "bytes=0-1023";
-        PresignedUrlGetObjectRequestWrapper requestWithRange = PresignedUrlGetObjectRequestWrapper.builder()
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "bytes=0-100",      // First 101 bytes
+        "bytes=100-",       // From byte 100 to end
+        "bytes=-100",       // Last 100 bytes
+        "bytes=0-0",        // Single byte
+        "bytes=100-200"     // Specific range
+    })
+    void marshall_withValidRangeFormats_shouldAddRangeHeader(String rangeValue) throws Exception {
+        PresignedUrlGetObjectRequestWrapper request = PresignedUrlGetObjectRequestWrapper.builder()
                 .url(testUrl)
                 .range(rangeValue)
                 .build();
-        SdkHttpFullRequest resultWithRange = marshaller.marshall(requestWithRange);
-        
-        assertThat(resultWithRange.method()).isEqualTo(SdkHttpMethod.GET);
-        assertThat(resultWithRange.getUri())
-                .satisfies(uri -> {
-                    assertThat(uri.getHost()).isEqualTo("test-bucket.s3.us-east-1.amazonaws.com");
-                    assertThat(uri.getPath()).isEqualTo("/test-key");
-                });
-        assertThat(resultWithRange.headers())
+        SdkHttpFullRequest result = marshaller.marshall(request);
+
+        assertThat(result.headers())
                 .containsKey("Range")
                 .satisfies(headers -> assertThat(headers.get("Range")).contains(rangeValue));
+    }
 
-        // Test with null and empty range - should not add Range header
-        PresignedUrlGetObjectRequestWrapper requestWithNullRange = PresignedUrlGetObjectRequestWrapper.builder()
+    @ParameterizedTest
+    @NullAndEmptySource
+    void marshall_withNullOrEmptyRange_shouldNotAddRangeHeader(String rangeValue) throws Exception {
+        PresignedUrlGetObjectRequestWrapper request = PresignedUrlGetObjectRequestWrapper.builder()
                 .url(testUrl)
-                .range(null)
+                .range(rangeValue)
                 .build();
-        PresignedUrlGetObjectRequestWrapper requestWithEmptyRange = PresignedUrlGetObjectRequestWrapper.builder()
-                .url(testUrl)
-                .range("")
-                .build();
-        
-        assertThat(marshaller.marshall(requestWithNullRange).headers()).doesNotContainKey("Range");
-        assertThat(marshaller.marshall(requestWithEmptyRange).headers()).doesNotContainKey("Range");
+        SdkHttpFullRequest result = marshaller.marshall(request);
+
+        assertThat(result.headers()).doesNotContainKey("Range");
     }
 
     @Test
@@ -114,56 +119,6 @@ class PresignedUrlGetObjectRequestMarshallerTest {
         assertThatThrownBy(() -> marshaller.marshall(null))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("presignedUrlGetObjectRequestWrapper must not be null");
-    }
-
-    @Test
-    void marshall_shouldPreserveUrlComponents() throws Exception {
-        String originalUrlString = testUrl.toString();
-        PresignedUrlGetObjectRequestWrapper request = PresignedUrlGetObjectRequestWrapper.builder()
-                .url(testUrl)
-                .range("bytes=0-100")
-                .build();
-        SdkHttpFullRequest result = marshaller.marshall(request);
-
-        // Test URL preservation - original URL should not be modified
-        assertThat(testUrl.toString()).isEqualTo(originalUrlString);
-        
-        // Test component preservation
-        assertThat(result.getUri())
-                .satisfies(uri -> {
-                    assertThat(uri.getHost()).isEqualTo("test-bucket.s3.us-east-1.amazonaws.com");
-                    assertThat(uri.getPath()).isEqualTo("/test-key");
-                    assertThat(uri.getScheme()).isEqualTo("https");
-                });
-        
-        // Test query parameter preservation
-        assertThat(result.getUri().getQuery())
-                .isNotNull()
-                .contains("X-Amz-Algorithm=AWS4-HMAC-SHA256")
-                .contains("X-Amz-Signature=example-signature")
-                .contains("X-Amz-Expires=3600");
-    }
-
-    @Test
-    void marshall_withDifferentRangeFormats_shouldAddCorrectHeaders() throws Exception {
-        String[] rangeFormats = {
-                "bytes=0-100",      // First 101 bytes
-                "bytes=100-",       // From byte 100 to end
-                "bytes=-100",       // Last 100 bytes
-                "bytes=0-0",        // Single byte
-                "bytes=100-200"     // Specific range
-        };
-
-        for (String rangeFormat : rangeFormats) {
-            PresignedUrlGetObjectRequestWrapper request = PresignedUrlGetObjectRequestWrapper.builder()
-                    .url(testUrl)
-                    .range(rangeFormat)
-                    .build();
-            SdkHttpFullRequest result = marshaller.marshall(request);
-
-            assertThat(result.headers()).containsKey("Range");
-            assertThat(result.headers().get("Range")).contains(rangeFormat);
-        }
     }
 
     @Test
@@ -176,5 +131,64 @@ class PresignedUrlGetObjectRequestMarshallerTest {
         assertThatThrownBy(() -> marshaller.marshall(request))
                 .isInstanceOf(SdkClientException.class)
                 .hasMessageContaining("Unable to marshall pre-signed URL Request");
+    }
+
+    @ParameterizedTest
+    @MethodSource("provideComplexUrls")
+    void marshall_withComplexPresignedUrl_shouldPreserveAllParameters(URL complexUrl, String[] expectedParams) 
+            throws Exception {
+        PresignedUrlGetObjectRequestWrapper request = PresignedUrlGetObjectRequestWrapper.builder()
+                .url(complexUrl)
+                .build();
+        SdkHttpFullRequest result = marshaller.marshall(request);
+
+        String query = result.getUri().getQuery();
+        for (String param : expectedParams) {
+            assertThat(query).contains(param);
+        }
+    }
+
+    // JDK 8 compatible method source
+    private static Stream<Arguments> provideComplexUrls() throws Exception {
+        return Stream.of(
+            Arguments.of(
+                new URL("https://my-bucket.s3.amazonaws.com/path/to/object.txt?" +
+                    "X-Amz-Date=20231215T120000Z&" +
+                    "X-Amz-Signature=example-signature-hash&" +
+                    "X-Amz-Algorithm=AWS4-HMAC-SHA256&" +
+                    "X-Amz-SignedHeaders=host%3Bx-amz-content-sha256&" +
+                    "X-Amz-Security-Token=xxx&" +
+                    "X-Amz-Credential=EXAMPLE12345678901234%2F20231215%2Fus-east-1%2Fs3%2Faws4_request&" +
+                    "X-Amz-Expires=86400&" +
+                    "response-content-disposition=attachment%3B%20filename%3D%22download.txt%22"),
+                new String[] {
+                    "X-Amz-Algorithm=AWS4-HMAC-SHA256",
+                    "X-Amz-Credential=EXAMPLE12345678901234",
+                    "X-Amz-Date=20231215T120000Z",
+                    "X-Amz-Expires=86400",
+                    "X-Amz-SignedHeaders=host",
+                    "X-Amz-Security-Token=xxx",
+                    "X-Amz-Signature=example-signature-hash",
+                    "response-content-disposition=attachment"
+                }
+            ),
+            Arguments.of(
+                new URL("https://test-bucket.s3.us-west-2.amazonaws.com/folder/file.pdf?" +
+                    "X-Amz-Date=20231215T180000Z&" +
+                    "X-Amz-Signature=different-signature&" +
+                    "X-Amz-Algorithm=AWS4-HMAC-SHA256&" +
+                    "X-Amz-SignedHeaders=host&" +
+                    "X-Amz-Credential=EXAMPLE12345678901234%2F20231215%2Fus-west-2%2Fs3%2Faws4_request&" +
+                    "X-Amz-Expires=7200"),
+                new String[] {
+                    "X-Amz-Algorithm=AWS4-HMAC-SHA256",
+                    "X-Amz-Credential=EXAMPLE12345678901234",
+                    "X-Amz-Date=20231215T180000Z",
+                    "X-Amz-Expires=7200",
+                    "X-Amz-SignedHeaders=host",
+                    "X-Amz-Signature=different-signature"
+                }
+            )
+        );
     }
 }
