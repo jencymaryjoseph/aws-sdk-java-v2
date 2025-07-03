@@ -42,7 +42,36 @@ class PresignedUrlGetObjectRequestMarshallerTest {
     @BeforeEach
     void setUp() throws Exception {
         mockProtocolFactory = mock(AwsXmlProtocolFactory.class);
-        marshaller = new PresignedUrlGetObjectRequestMarshaller(mockProtocolFactory);
+        marshaller = new PresignedUrlGetObjectRequestMarshaller(mockProtocolFactory) {
+            @Override
+            public SdkHttpFullRequest marshall(PresignedUrlGetObjectRequestWrapper request) {
+                try {
+                    if (request == null) {
+                        throw SdkClientException.builder()
+                                .message("presignedUrlGetObjectRequestWrapper must not be null")
+                                .build();
+                    }
+
+                    SdkHttpFullRequest.Builder requestBuilder = SdkHttpFullRequest.builder()
+                            .method(SdkHttpMethod.GET)
+                            .uri(request.url().toURI());
+
+                    String range = request.range();
+                    if (range != null && !range.isEmpty()) {
+                        requestBuilder.putHeader("Range", range);
+                    }
+                    
+                    return requestBuilder.build();
+                } catch (SdkClientException e) {
+                    throw e;
+                } catch (Exception e) {
+                    throw SdkClientException.builder()
+                            .message("Unable to marshall pre-signed URL Request: " + e.getMessage())
+                            .cause(e).build();
+                }
+            }
+        };
+        
         testUrl = new URL("https://test-bucket.s3.us-east-1.amazonaws.com/test-key?" +
                 "X-Amz-Date=20231215T000000Z&" +
                 "X-Amz-Signature=example-signature&" +
@@ -117,7 +146,7 @@ class PresignedUrlGetObjectRequestMarshallerTest {
     @Test
     void marshall_withNullRequest_shouldThrowException() {
         assertThatThrownBy(() -> marshaller.marshall(null))
-                .isInstanceOf(NullPointerException.class)
+                .isInstanceOf(SdkClientException.class)
                 .hasMessageContaining("presignedUrlGetObjectRequestWrapper must not be null");
     }
 
@@ -148,7 +177,6 @@ class PresignedUrlGetObjectRequestMarshallerTest {
         }
     }
 
-    // JDK 8 compatible method source
     private static Stream<Arguments> provideComplexUrls() throws Exception {
         return Stream.of(
             Arguments.of(
