@@ -76,7 +76,7 @@ public final class PresignedUrlGetObjectRequest implements ToCopyableBuilder<Pre
     }
 
     /**
-     * Create a {@code PresignedUrlGetObjectRequest} instance with the given configuration.
+     * Create a {@code PresignedUrlGetObjectRequest} instance with the given configuration
      *
      * @param builderConsumer the consumer that will configure the builder
      * @return a {@code PresignedUrlGetObjectRequest} instance
@@ -120,26 +120,14 @@ public final class PresignedUrlGetObjectRequest implements ToCopyableBuilder<Pre
 
     public interface Builder extends CopyableBuilder<Builder, PresignedUrlGetObjectRequest> {
         /**
-         * <p>
-         * Sets the presigned URL for the S3 object. This URL contains all necessary authentication information and can be used to download
-         * the object without additional credentials.
-         * </p>
-         * <b>Note:</b> Presigned URLs have a limited lifetime and will expire after the
-         * specified duration. Ensure the URL is used before expiration.
-         *
-         * @param presignedUrl The presigned URL for the S3 object
+         * Sets the presigned URL for the S3 object.
+         * @param presignedUrl
          * @return Returns a reference to this object so that method calls can be chained together.
          */
         Builder presignedUrl(URL presignedUrl);
 
         /**
-         * <p>
-         * Specifies the byte range of an object. For more information about the HTTP Range header, see
-         * <a href="https://www.rfc-editor.org/rfc/rfc9110.html#name-range">
-         * https://www.rfc-editor.org/rfc/rfc9110.html#name-range</a>.
-         * </p>
-         * <b>Note:</b>  Amazon S3 doesn't support retrieving multiple ranges of data per <code>GET</code> request.
-         *
+         * Specifies the byte range of an object.
          * @param range The HTTP Range header value (e.g., "bytes=0-1023")
          * @return Returns a reference to this object so that method calls can be chained together.
          */
