@@ -136,15 +136,13 @@ public final class DefaultPresignedUrlManager implements PresignedUrlManager {
                             .withRequestConfiguration(clientConfiguration)
                             .withInput(internalRequest)
                             .withMetricCollector(apiCallMetricCollector)
-                            // TODO: Deprecate IS_DISCOVERED_ENDPOINT, use SKIP_ENDPOINT_RESOLUTION for better semantics
+                            // TODO: Deprecate IS_DISCOVERED_ENDPOINT, use new SKIP_ENDPOINT_RESOLUTION for better semantics
                             .putExecutionAttribute(SdkInternalExecutionAttribute.IS_DISCOVERED_ENDPOINT, true)
                             .withMarshaller(new PresignedUrlGetObjectRequestMarshaller(protocolFactory)), responseTransformer);
         } finally {
             metricPublishers.forEach(p -> p.publish(apiCallMetricCollector.collect()));
         }
     }
-
-    //TODO : Add and implement other getObject request flavours
     
     private SdkClientConfiguration updateSdkClientConfiguration(PresignedUrlGetObjectRequestWrapper request,
                                                                 SdkClientConfiguration clientConfiguration) {

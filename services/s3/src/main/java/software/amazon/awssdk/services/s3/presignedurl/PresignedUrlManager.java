@@ -15,7 +15,11 @@
 
 package software.amazon.awssdk.services.s3.presignedurl;
 
+import java.nio.file.Path;
+import java.util.function.Consumer;
 import software.amazon.awssdk.annotations.SdkPublicApi;
+import software.amazon.awssdk.core.ResponseBytes;
+import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.core.sync.ResponseTransformer;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -30,6 +34,78 @@ import software.amazon.awssdk.services.s3.presignedurl.model.PresignedUrlGetObje
  */
 @SdkPublicApi
 public interface PresignedUrlManager {
+    /**
+     * <p>
+     * Downloads an S3 object using a presigned URL and returns the response as an input stream.
+     * </p>
+     * <p>
+     * This operation uses a presigned URL that contains all necessary authentication information, eliminating the need for AWS
+     * credentials at request time. The presigned URL must be valid and not expired.
+     * </p>
+     * <dl>
+     * <dt>Range Requests</dt>
+     * <dd>
+     * <p>
+     * Supports partial object downloads using HTTP Range headers. Specify the range parameter
+     * in the request to download only a portion of the object (e.g., "bytes=0-1023").
+     * </p>
+     * </dd>
+     * </dl>
+     *
+     * @param request The presigned URL request containing the URL and optional range parameters
+     * @return ResponseInputStream containing the object content and response metadata
+     * @throws software.amazon.awssdk.services.s3.model.NoSuchKeyException          The specified object does not exist
+     * @throws software.amazon.awssdk.services.s3.model.InvalidObjectStateException Object is archived and must be restored before
+     *                                                                              retrieval
+     * @throws software.amazon.awssdk.core.exception.SdkClientException             If any client side error occurs such as
+     *                                                                              network failures or invalid presigned URL
+     * @throws S3Exception                                                          Base class for all S3 service exceptions.
+     *                                                                              Unknown exceptions will be thrown as an
+     *                                                                              instance of this type.
+     */
+    default ResponseInputStream<GetObjectResponse> getObject(PresignedUrlGetObjectRequest request) throws NoSuchKeyException,
+                                                                                                          InvalidObjectStateException,
+                                                                                                          SdkClientException,
+                                                                                                          S3Exception {
+        return getObject(request, ResponseTransformer.toInputStream());
+    }
+
+    /**
+     * <p>
+     * Downloads an S3 object using a presigned URL with a consumer builder pattern.
+     * </p>
+     * <p>
+     * This operation uses a presigned URL that contains all necessary authentication information, eliminating the need for AWS
+     * credentials at request time. The presigned URL must be valid and not expired.
+     * </p>
+     * <dl>
+     * <dt>Range Requests</dt>
+     * <dd>
+     * <p>
+     * Supports partial object downloads using HTTP Range headers. Specify the range parameter
+     * in the request to download only a portion of the object (e.g., "bytes=0-1023").
+     * </p>
+     * </dd>
+     * </dl>
+     *
+     * @param requestConsumer Consumer that builds the request
+     * @return ResponseInputStream containing the object content and response metadata
+     * @throws software.amazon.awssdk.services.s3.model.NoSuchKeyException          The specified object does not exist
+     * @throws software.amazon.awssdk.services.s3.model.InvalidObjectStateException Object is archived and must be restored before
+     *                                                                              retrieval
+     * @throws software.amazon.awssdk.core.exception.SdkClientException             If any client side error occurs such as
+     *                                                                              network failures or invalid presigned URL
+     * @throws S3Exception                                                          Base class for all S3 service exceptions.
+     *                                                                              Unknown exceptions will be thrown as an
+     *                                                                              instance of this type.
+     */
+    default ResponseInputStream<GetObjectResponse> getObject(Consumer<PresignedUrlGetObjectRequest.Builder> requestConsumer) throws NoSuchKeyException,
+                                                                                                                                    InvalidObjectStateException,
+                                                                                                                                    SdkClientException,
+                                                                                                                                    S3Exception {
+        return getObject(PresignedUrlGetObjectRequest.builder(requestConsumer));
+    }
+
     /**
      * <p>
      * Downloads an S3 object using a presigned URL.
@@ -80,5 +156,190 @@ public interface PresignedUrlManager {
         throw new UnsupportedOperationException();
     }
 
-    //TODO: Add other getObject method flavors
+    /**
+     * <p>
+     * Downloads an S3 object using a presigned URL with a consumer builder pattern and transforms the response.
+     * </p>
+     * <p>
+     * This operation uses a presigned URL that contains all necessary authentication information, eliminating the need for AWS
+     * credentials at request time. The presigned URL must be valid and not expired.
+     * </p>
+     * <dl>
+     * <dt>Range Requests</dt>
+     * <dd>
+     * <p>
+     * Supports partial object downloads using HTTP Range headers. Specify the range parameter
+     * in the request to download only a portion of the object (e.g., "bytes=0-1023").
+     * </p>
+     * </dd>
+     * </dl>
+     *
+     * @param requestConsumer Consumer that builds the request
+     * @param responseTransformer Transforms the response to the desired return type
+     * @param <ReturnT> The type of the transformed response
+     * @return The transformed result of the ResponseTransformer
+     * @throws software.amazon.awssdk.services.s3.model.NoSuchKeyException          The specified object does not exist
+     * @throws software.amazon.awssdk.services.s3.model.InvalidObjectStateException Object is archived and must be restored before
+     *                                                                              retrieval
+     * @throws software.amazon.awssdk.core.exception.SdkClientException             If any client side error occurs such as
+     *                                                                              network failures or invalid presigned URL
+     * @throws S3Exception                                                          Base class for all S3 service exceptions.
+     *                                                                              Unknown exceptions will be thrown as an
+     *                                                                              instance of this type.
+     */
+    default <ReturnT> ReturnT getObject(Consumer<PresignedUrlGetObjectRequest.Builder> requestConsumer,
+                                       ResponseTransformer<GetObjectResponse, ReturnT> responseTransformer) throws NoSuchKeyException,
+                                                                                                                   InvalidObjectStateException,
+                                                                                                                   SdkClientException,
+                                                                                                                   S3Exception {
+        return getObject(PresignedUrlGetObjectRequest.builder(requestConsumer), responseTransformer);
+    }
+
+    /**
+     * <p>
+     * Downloads an S3 object using a presigned URL and saves it to the specified file path.
+     * </p>
+     * <p>
+     * This operation uses a presigned URL that contains all necessary authentication information, eliminating the need for AWS
+     * credentials at request time. The presigned URL must be valid and not expired.
+     * </p>
+     * <dl>
+     * <dt>Range Requests</dt>
+     * <dd>
+     * <p>
+     * Supports partial object downloads using HTTP Range headers. Specify the range parameter
+     * in the request to download only a portion of the object (e.g., "bytes=0-1023").
+     * </p>
+     * </dd>
+     * </dl>
+     *
+     * @param request The presigned URL request containing the URL and optional range parameters
+     * @param destinationPath The path where the object content will be saved
+     * @return GetObjectResponse containing the response metadata
+     * @throws software.amazon.awssdk.services.s3.model.NoSuchKeyException          The specified object does not exist
+     * @throws software.amazon.awssdk.services.s3.model.InvalidObjectStateException Object is archived and must be restored before
+     *                                                                              retrieval
+     * @throws software.amazon.awssdk.core.exception.SdkClientException             If any client side error occurs such as
+     *                                                                              network failures or invalid presigned URL
+     * @throws S3Exception                                                          Base class for all S3 service exceptions.
+     *                                                                              Unknown exceptions will be thrown as an
+     *                                                                              instance of this type.
+     */
+    default GetObjectResponse getObject(PresignedUrlGetObjectRequest request,
+                                        Path destinationPath) throws NoSuchKeyException,
+                                                                     InvalidObjectStateException,
+                                                                     SdkClientException,
+                                                                     S3Exception {
+        return getObject(request, ResponseTransformer.toFile(destinationPath));
+    }
+
+    /**
+     * <p>
+     * Downloads an S3 object using a presigned URL with a consumer builder pattern and saves it to the specified file path.
+     * </p>
+     * <p>
+     * This operation uses a presigned URL that contains all necessary authentication information, eliminating the need for AWS
+     * credentials at request time. The presigned URL must be valid and not expired.
+     * </p>
+     * <dl>
+     * <dt>Range Requests</dt>
+     * <dd>
+     * <p>
+     * Supports partial object downloads using HTTP Range headers. Specify the range parameter
+     * in the request to download only a portion of the object (e.g., "bytes=0-1023").
+     * </p>
+     * </dd>
+     * </dl>
+     *
+     * @param requestConsumer Consumer that builds the request
+     * @param destinationPath The path where the object content will be saved
+     * @return GetObjectResponse containing the response metadata
+     * @throws software.amazon.awssdk.services.s3.model.NoSuchKeyException          The specified object does not exist
+     * @throws software.amazon.awssdk.services.s3.model.InvalidObjectStateException Object is archived and must be restored before
+     *                                                                              retrieval
+     * @throws software.amazon.awssdk.core.exception.SdkClientException             If any client side error occurs such as
+     *                                                                              network failures or invalid presigned URL
+     * @throws S3Exception                                                          Base class for all S3 service exceptions.
+     *                                                                              Unknown exceptions will be thrown as an
+     *                                                                              instance of this type.
+     */
+    default GetObjectResponse getObject(Consumer<PresignedUrlGetObjectRequest.Builder> requestConsumer,
+                                        Path destinationPath) throws NoSuchKeyException,
+                                                                     InvalidObjectStateException,
+                                                                     SdkClientException,
+                                                                     S3Exception {
+        return getObject(PresignedUrlGetObjectRequest.builder(requestConsumer), destinationPath);
+    }
+
+    /**
+     * <p>
+     * Downloads an S3 object using a presigned URL and returns the content as bytes.
+     * </p>
+     * <p>
+     * This operation uses a presigned URL that contains all necessary authentication information, eliminating the need for AWS
+     * credentials at request time. The presigned URL must be valid and not expired.
+     * </p>
+     * <dl>
+     * <dt>Range Requests</dt>
+     * <dd>
+     * <p>
+     * Supports partial object downloads using HTTP Range headers. Specify the range parameter
+     * in the request to download only a portion of the object (e.g., "bytes=0-1023").
+     * </p>
+     * </dd>
+     * </dl>
+     *
+     * @param request The presigned URL request containing the URL and optional range parameters
+     * @return ResponseBytes containing the object content as bytes and response metadata
+     * @throws software.amazon.awssdk.services.s3.model.NoSuchKeyException          The specified object does not exist
+     * @throws software.amazon.awssdk.services.s3.model.InvalidObjectStateException Object is archived and must be restored before
+     *                                                                              retrieval
+     * @throws software.amazon.awssdk.core.exception.SdkClientException             If any client side error occurs such as
+     *                                                                              network failures or invalid presigned URL
+     * @throws S3Exception                                                          Base class for all S3 service exceptions.
+     *                                                                              Unknown exceptions will be thrown as an
+     *                                                                              instance of this type.
+     */
+    default ResponseBytes<GetObjectResponse> getObjectAsBytes(PresignedUrlGetObjectRequest request) throws NoSuchKeyException,
+                                                                                                           InvalidObjectStateException,
+                                                                                                           SdkClientException,
+                                                                                                           S3Exception {
+        return getObject(request, ResponseTransformer.toBytes());
+    }
+
+    /**
+     * <p>
+     * Downloads an S3 object using a presigned URL with a consumer builder pattern and returns the content as bytes.
+     * </p>
+     * <p>
+     * This operation uses a presigned URL that contains all necessary authentication information, eliminating the need for AWS
+     * credentials at request time. The presigned URL must be valid and not expired.
+     * </p>
+     * <dl>
+     * <dt>Range Requests</dt>
+     * <dd>
+     * <p>
+     * Supports partial object downloads using HTTP Range headers. Specify the range parameter
+     * in the request to download only a portion of the object (e.g., "bytes=0-1023").
+     * </p>
+     * </dd>
+     * </dl>
+     *
+     * @param requestConsumer Consumer that builds the request
+     * @return ResponseBytes containing the object content as bytes and response metadata
+     * @throws software.amazon.awssdk.services.s3.model.NoSuchKeyException          The specified object does not exist
+     * @throws software.amazon.awssdk.services.s3.model.InvalidObjectStateException Object is archived and must be restored before
+     *                                                                              retrieval
+     * @throws software.amazon.awssdk.core.exception.SdkClientException             If any client side error occurs such as
+     *                                                                              network failures or invalid presigned URL
+     * @throws S3Exception                                                          Base class for all S3 service exceptions.
+     *                                                                              Unknown exceptions will be thrown as an
+     *                                                                              instance of this type.
+     */
+    default ResponseBytes<GetObjectResponse> getObjectAsBytes(Consumer<PresignedUrlGetObjectRequest.Builder> requestConsumer) throws NoSuchKeyException,
+                                                                                                                                     InvalidObjectStateException,
+                                                                                                                                     SdkClientException,
+                                                                                                                                     S3Exception {
+        return getObjectAsBytes(PresignedUrlGetObjectRequest.builder(requestConsumer));
+    }
 }
