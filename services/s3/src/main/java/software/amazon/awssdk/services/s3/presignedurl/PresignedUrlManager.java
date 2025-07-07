@@ -63,10 +63,11 @@ public interface PresignedUrlManager {
      *                                                                              Unknown exceptions will be thrown as an
      *                                                                              instance of this type.
      */
-    default ResponseInputStream<GetObjectResponse> getObject(PresignedUrlGetObjectRequest request) throws NoSuchKeyException,
-                                                                                                          InvalidObjectStateException,
-                                                                                                          SdkClientException,
-                                                                                                          S3Exception {
+    default ResponseInputStream<GetObjectResponse> getObject(PresignedUrlGetObjectRequest request) 
+            throws NoSuchKeyException,
+                   InvalidObjectStateException,
+                   SdkClientException,
+                   S3Exception {
         return getObject(request, ResponseTransformer.toInputStream());
     }
 
@@ -99,10 +100,11 @@ public interface PresignedUrlManager {
      *                                                                              Unknown exceptions will be thrown as an
      *                                                                              instance of this type.
      */
-    default ResponseInputStream<GetObjectResponse> getObject(Consumer<PresignedUrlGetObjectRequest.Builder> requestConsumer) throws NoSuchKeyException,
-                                                                                                                                    InvalidObjectStateException,
-                                                                                                                                    SdkClientException,
-                                                                                                                                    S3Exception {
+    default ResponseInputStream<GetObjectResponse> getObject(Consumer<PresignedUrlGetObjectRequest.Builder> requestConsumer) 
+            throws NoSuchKeyException,
+                   InvalidObjectStateException,
+                   SdkClientException,
+                   S3Exception {
         return getObject(PresignedUrlGetObjectRequest.builder(requestConsumer));
     }
 
@@ -188,10 +190,11 @@ public interface PresignedUrlManager {
      *                                                                              instance of this type.
      */
     default <ReturnT> ReturnT getObject(Consumer<PresignedUrlGetObjectRequest.Builder> requestConsumer,
-                                       ResponseTransformer<GetObjectResponse, ReturnT> responseTransformer) throws NoSuchKeyException,
-                                                                                                                   InvalidObjectStateException,
-                                                                                                                   SdkClientException,
-                                                                                                                   S3Exception {
+                                       ResponseTransformer<GetObjectResponse, ReturnT> responseTransformer) 
+            throws NoSuchKeyException,
+                   InvalidObjectStateException,
+                   SdkClientException,
+                   S3Exception {
         return getObject(PresignedUrlGetObjectRequest.builder(requestConsumer), responseTransformer);
     }
 
@@ -300,9 +303,10 @@ public interface PresignedUrlManager {
      *                                                                              Unknown exceptions will be thrown as an
      *                                                                              instance of this type.
      */
-    default ResponseBytes<GetObjectResponse> getObjectAsBytes(PresignedUrlGetObjectRequest request) throws NoSuchKeyException,
-                                                                                                           InvalidObjectStateException,
-                                                                                                           SdkClientException,
+    default ResponseBytes<GetObjectResponse> getObjectAsBytes(PresignedUrlGetObjectRequest request) 
+            throws NoSuchKeyException,
+                   InvalidObjectStateException,
+                   SdkClientException,
                                                                                                            S3Exception {
         return getObject(request, ResponseTransformer.toBytes());
     }
@@ -336,10 +340,11 @@ public interface PresignedUrlManager {
      *                                                                              Unknown exceptions will be thrown as an
      *                                                                              instance of this type.
      */
-    default ResponseBytes<GetObjectResponse> getObjectAsBytes(Consumer<PresignedUrlGetObjectRequest.Builder> requestConsumer) throws NoSuchKeyException,
-                                                                                                                                     InvalidObjectStateException,
-                                                                                                                                     SdkClientException,
-                                                                                                                                     S3Exception {
+    default ResponseBytes<GetObjectResponse> getObjectAsBytes(Consumer<PresignedUrlGetObjectRequest.Builder> requestConsumer) 
+            throws NoSuchKeyException,
+                   InvalidObjectStateException,
+                   SdkClientException,
+                   S3Exception {
         return getObjectAsBytes(PresignedUrlGetObjectRequest.builder(requestConsumer));
     }
 }
