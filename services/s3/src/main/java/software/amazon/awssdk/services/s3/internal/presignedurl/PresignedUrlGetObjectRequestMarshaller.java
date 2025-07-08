@@ -38,9 +38,9 @@ import software.amazon.awssdk.utils.Validate;
 @SdkInternalApi
 public class PresignedUrlGetObjectRequestMarshaller implements Marshaller<PresignedUrlGetObjectRequestWrapper> {
     private static final OperationInfo SDK_OPERATION_BINDING = OperationInfo.builder()
-                                                                            .requestUri("").httpMethod(SdkHttpMethod.GET).hasExplicitPayloadMember(false).hasPayloadMembers(false)
-                                                                            .putAdditionalMetadata(AwsXmlProtocolFactory.ROOT_MARSHALL_LOCATION_ATTRIBUTE, null)
-                                                                            .putAdditionalMetadata(AwsXmlProtocolFactory.XML_NAMESPACE_ATTRIBUTE, null).build();
+            .requestUri("").httpMethod(SdkHttpMethod.GET).hasExplicitPayloadMember(false).hasPayloadMembers(false)
+            .putAdditionalMetadata(AwsXmlProtocolFactory.ROOT_MARSHALL_LOCATION_ATTRIBUTE, null)
+            .putAdditionalMetadata(AwsXmlProtocolFactory.XML_NAMESPACE_ATTRIBUTE, null).build();
 
     private final AwsXmlProtocolFactory protocolFactory;
 
@@ -60,17 +60,18 @@ public class PresignedUrlGetObjectRequestMarshaller implements Marshaller<Presig
         Validate.paramNotNull(presignedUrlGetObjectRequestWrapper, "presignedUrlGetObjectRequestWrapper");
         try {
             ProtocolMarshaller<SdkHttpFullRequest> protocolMarshaller = protocolFactory
-                .createProtocolMarshaller(SDK_OPERATION_BINDING);
+                    .createProtocolMarshaller(SDK_OPERATION_BINDING);
             URI presignedUri = presignedUrlGetObjectRequestWrapper.url().toURI();
 
             return protocolMarshaller.marshall(presignedUrlGetObjectRequestWrapper)
-                                     .toBuilder()
-                                     .uri(presignedUri)
-                                     .build();
+                    .toBuilder()
+                    .uri(presignedUri)
+                    .build();
+
         } catch (Exception e) {
             throw SdkClientException.builder()
-                                    .message("Unable to marshall pre-signed URL Request: " + e.getMessage())
-                                    .cause(e).build();
+                    .message("Unable to marshall pre-signed URL Request: " + e.getMessage())
+                    .cause(e).build();
         }
     }
 }

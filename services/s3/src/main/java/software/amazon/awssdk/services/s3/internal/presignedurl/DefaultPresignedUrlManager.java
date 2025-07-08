@@ -69,37 +69,7 @@ public final class DefaultPresignedUrlManager implements PresignedUrlManager {
     }
     
     /**
-     * <p>
      * Downloads an S3 object using a presigned URL.
-     * </p>
-     * <p>
-     * This operation uses a presigned URL that contains all necessary authentication information, eliminating the need for AWS
-     * credentials at request time. The presigned URL must be valid and not expired.
-     * </p>
-     * <p>
-     * Supports partial object downloads using HTTP Range headers. Specify the range parameter
-     * in the request to download only a portion of the object (e.g., "bytes=0-1023").
-     * </p>
-     *
-     * @param presignedUrlGetObjectRequest
-     *        The presigned URL request containing the URL and optional range parameters
-     * @param responseTransformer
-     *        Transforms the response to the desired return type. See
-     *        {@link software.amazon.awssdk.core.sync.ResponseTransformer} for pre-built implementations like
-     *        downloading to a file or converting to bytes.
-     * @param <ReturnT>
-     *        The type of the transformed response
-     * @return The transformed result of the ResponseTransformer
-     * @throws software.amazon.awssdk.services.s3.model.NoSuchKeyException
-     *         The specified object does not exist
-     * @throws software.amazon.awssdk.services.s3.model.InvalidObjectStateException
-     *         Object is archived and must be restored before retrieval
-     * @throws software.amazon.awssdk.core.exception.SdkClientException
-     *         If any client side error occurs such as network failures, invalid presigned URL, or URL expiration
-     * @throws S3Exception
-     *         Base class for all S3 service exceptions. Unknown exceptions will be thrown as an
-     *         instance of this type.
-     * @sample S3Client.PresignedUrlManager.GetObject
      */
     @Override
     public <ReturnT> ReturnT getObject(PresignedUrlGetObjectRequest presignedUrlGetObjectRequest,
@@ -125,6 +95,7 @@ public final class DefaultPresignedUrlManager implements PresignedUrlManager {
             NoOpMetricCollector.create() : MetricCollector.create("ApiCall");
         try {
             apiCallMetricCollector.reportMetric(CoreMetric.SERVICE_ID, "S3");
+            //TODO: Discuss if we need to change OPERATION_NAME as part of Surface API Review
             apiCallMetricCollector.reportMetric(CoreMetric.OPERATION_NAME, "GetObject");
 
             return clientHandler.execute(
