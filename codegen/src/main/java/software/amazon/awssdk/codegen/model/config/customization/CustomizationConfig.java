@@ -357,6 +357,11 @@ public class CustomizationConfig {
      */
     private boolean enableEnvironmentBearerToken = false;
 
+    /**
+     * A boolean flag to indicate if Presigned URL Manager is supported.
+     */
+    private boolean presignedUrlManagerSupported;
+
     private CustomizationConfig() {
     }
 
@@ -938,5 +943,13 @@ public class CustomizationConfig {
 
     public void setEnableEnvironmentBearerToken(boolean enableEnvironmentBearerToken) {
         this.enableEnvironmentBearerToken = enableEnvironmentBearerToken;
+    }
+
+    public boolean getPresignedUrlManagerSupported() {
+        return presignedUrlManagerSupported;
+    }
+
+    public void setPresignedUrlManagerSupported(boolean presignedUrlManagerSupported) {
+        this.presignedUrlManagerSupported = presignedUrlManagerSupported;
     }
 }
