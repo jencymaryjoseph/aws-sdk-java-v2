@@ -177,6 +177,12 @@ public class DelegatingSyncClientClass extends SyncClientInterface {
         return builder.addAnnotation(Override.class).addStatement("return delegate.waiter()");
     }
 
+    @Override
+    protected void addPresignedUrlManagerMethod(TypeSpec.Builder type) {
+        // Skip adding presignedUrlManager method for delegating classes
+        // The interface already has it as default method
+    }
+
     private MethodSpec constructor(ClassName interfaceClass) {
         return MethodSpec.constructorBuilder()
                          .addModifiers(PUBLIC)
