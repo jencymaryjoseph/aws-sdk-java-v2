@@ -179,8 +179,16 @@ public class DelegatingSyncClientClass extends SyncClientInterface {
 
     @Override
     protected void addPresignedUrlManagerMethod(TypeSpec.Builder type) {
-        // Skip adding presignedUrlManager method for delegating classes
-        // The interface already has it as default method
+        if (model.getCustomizationConfig().getPresignedUrlManagerSupported()) {
+            ClassName returnType = poetExtensions.getPresignedUrlManagerInterface();
+            MethodSpec method = MethodSpec.methodBuilder("presignedUrlManager")
+                                         .addAnnotation(Override.class)
+                                         .addModifiers(PUBLIC)
+                                         .returns(returnType)
+                                         .addStatement("return delegate.presignedUrlManager()")
+                                         .build();
+            type.addMethod(method);
+        }
     }
 
     private MethodSpec constructor(ClassName interfaceClass) {
