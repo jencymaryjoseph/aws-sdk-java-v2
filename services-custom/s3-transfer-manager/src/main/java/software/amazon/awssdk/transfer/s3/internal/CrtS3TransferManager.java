@@ -31,10 +31,12 @@ import software.amazon.awssdk.services.s3.S3AsyncClient;
 import software.amazon.awssdk.services.s3.internal.crt.S3MetaRequestPauseObservable;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectResponse;
+import software.amazon.awssdk.services.s3.presignedurl.model.PresignedUrlGetObjectRequest;
 import software.amazon.awssdk.transfer.s3.S3TransferManager;
 import software.amazon.awssdk.transfer.s3.internal.model.CrtFileUpload;
 import software.amazon.awssdk.transfer.s3.internal.progress.TransferProgressUpdater;
 import software.amazon.awssdk.transfer.s3.model.CompletedFileUpload;
+import software.amazon.awssdk.transfer.s3.model.FileDownload;
 import software.amazon.awssdk.transfer.s3.model.FileUpload;
 import software.amazon.awssdk.transfer.s3.model.ResumableFileUpload;
 import software.amazon.awssdk.transfer.s3.model.UploadFileRequest;
@@ -139,4 +141,18 @@ class CrtS3TransferManager extends GenericS3TransferManager {
                                .overrideConfiguration(modifiedRequestOverrideConfig)
                                .build();
     }
+
+    @Override
+    public FileDownload downloadFileWithPresignedUrl(PresignedUrlGetObjectRequest presignedUrlRequest,
+                                                     java.nio.file.Path destination) {
+        return super.downloadFileWithPresignedUrl(presignedUrlRequest, destination);
+    }
+
+    // @Override
+    // public FileDownload downloadFileWithPresignedUrl(DownloadFileWithPresignedUrlRequest downloadFileWithPresignedUrlRequest) {
+    //     // CRT-based S3 client may have optimized presigned URL handling
+    //     // For now, delegate to parent implementation
+    //     // Future: Could add CRT-specific optimizations here
+    //     return super.downloadFileWithPresignedUrl(downloadFileWithPresignedUrlRequest);
+    // }
 }

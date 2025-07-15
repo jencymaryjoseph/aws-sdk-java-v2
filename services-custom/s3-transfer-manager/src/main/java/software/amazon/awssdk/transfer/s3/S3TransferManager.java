@@ -28,6 +28,7 @@ import software.amazon.awssdk.services.s3.model.CopyObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.UploadPartCopyRequest;
+import software.amazon.awssdk.services.s3.presignedurl.model.PresignedUrlGetObjectRequest;
 import software.amazon.awssdk.transfer.s3.internal.TransferManagerFactory;
 import software.amazon.awssdk.transfer.s3.model.CompletedDirectoryDownload;
 import software.amazon.awssdk.transfer.s3.model.CompletedDirectoryUpload;
@@ -38,6 +39,7 @@ import software.amazon.awssdk.transfer.s3.model.DirectoryUpload;
 import software.amazon.awssdk.transfer.s3.model.Download;
 import software.amazon.awssdk.transfer.s3.model.DownloadDirectoryRequest;
 import software.amazon.awssdk.transfer.s3.model.DownloadFileRequest;
+import software.amazon.awssdk.transfer.s3.model.DownloadFileWithPresignedUrlRequest;
 import software.amazon.awssdk.transfer.s3.model.DownloadRequest;
 import software.amazon.awssdk.transfer.s3.model.FileDownload;
 import software.amazon.awssdk.transfer.s3.model.FileUpload;
@@ -287,6 +289,47 @@ public interface S3TransferManager extends SdkAutoCloseable {
      */
     default FileDownload resumeDownloadFile(Consumer<ResumableFileDownload.Builder> resumableFileDownload) {
         return resumeDownloadFile(ResumableFileDownload.builder().applyMutation(resumableFileDownload).build());
+    }
+
+    /**
+     * Downloads an S3 object to a local file using a presigned URL.
+     * <p>
+     * This method uses the AsyncPresignedUrlManager internally to perform the download operation
+     * without requiring AWS credentials at request time. The presigned URL must be valid and not expired.
+     * <p>
+     * Users can monitor the progress of the transfer by attaching a {@link TransferListener}.
+     * <p>
+     * <b>Usage Example:</b>
+     * {@snippet :
+     *         S3TransferManager transferManager = S3TransferManager.create();
+     *
+     *         PresignedUrlGetObjectRequest presignedRequest = PresignedUrlGetObjectRequest.builder()
+     *                                                                                    .presignedUrl("https://...")
+     *                                                                                    .build();
+     *
+     *         FileDownload download = transferManager.downloadFileWithPresignedUrl(presignedRequest, Paths.get("myFile.txt"));
+     *
+     *         // Wait for the transfer to complete
+     *         download.completionFuture().join();
+     * }
+     *
+     * @param presignedUrlRequest the presigned URL request containing the URL and optional parameters
+     * @param destination the path to the file where the downloaded object will be stored
+     * @return A {@link FileDownload} that can be used to track the ongoing transfer
+     */
+    default FileDownload downloadFileWithPresignedUrl(PresignedUrlGetObjectRequest presignedUrlRequest, 
+                                                       java.nio.file.Path destination) {
+        throw new UnsupportedOperationException();
+    }
+
+    /**
+     * Downloads an S3 object to a local file using a presigned URL.
+     *
+     * @param downloadFileWithPresignedUrlRequest the download request
+     * @return A {@link FileDownload} that can be used to track the ongoing transfer
+     */
+    default FileDownload downloadFileWithPresignedUrl(DownloadFileWithPresignedUrlRequest downloadFileWithPresignedUrlRequest) {
+        throw new UnsupportedOperationException();
     }
 
     /**
