@@ -20,14 +20,22 @@ import software.amazon.awssdk.annotations.SdkInternalApi;
 import software.amazon.awssdk.core.SplittingTransformerConfiguration;
 import software.amazon.awssdk.core.async.AsyncResponseTransformer;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.presignedurl.model.PresignedUrlDownloadRequest;
 import software.amazon.awssdk.utils.CompletableFutureUtils;
 import software.amazon.awssdk.utils.Logger;
 
+import java.util.concurrent.CompletableFuture;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import software.amazon.awssdk.annotations.SdkInternalApi;
+import software.amazon.awssdk.core.async.AsyncResponseTransformer;
 import software.amazon.awssdk.core.exception.SdkClientException;
+import software.amazon.awssdk.services.s3.S3AsyncClient;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
+import software.amazon.awssdk.utils.Logger;
 
 @SdkInternalApi
 public class PresignedUrlDownloadHelper {
@@ -51,8 +59,8 @@ public class PresignedUrlDownloadHelper {
     }
 
     public <T> CompletableFuture<T> downloadObject(
-        PresignedUrlDownloadRequest presignedRequest,
-        AsyncResponseTransformer<GetObjectResponse, T> asyncResponseTransformer) {
+            PresignedUrlDownloadRequest presignedRequest,
+            AsyncResponseTransformer<GetObjectResponse, T> asyncResponseTransformer) {
 
         // If range is specified, do single part download
         if (presignedRequest.range() != null) {
@@ -75,7 +83,7 @@ public class PresignedUrlDownloadHelper {
             if (totalContentLength == null || totalContentLength <= 0) {
                 log.debug(() -> "Content length not available from Content-Range header, performing single part download");
                 CompletableFuture<T> singlePartFuture =
-                    s3AsyncClient.presignedUrlExtension().getObject(presignedRequest, asyncResponseTransformer);
+                        s3AsyncClient.presignedUrlExtension().getObject(presignedRequest, asyncResponseTransformer);
                 CompletableFutureUtils.forwardResultTo(singlePartFuture, returnFuture);
                 return;
             }
@@ -83,15 +91,15 @@ public class PresignedUrlDownloadHelper {
             // Check if content is below threshold
             if (totalContentLength < multipartDownloadThresholdInBytes) {
                 log.debug(() -> String.format("Content length %d is below threshold %d, performing single part download",
-                                              totalContentLength, multipartDownloadThresholdInBytes));
+                        totalContentLength, multipartDownloadThresholdInBytes));
                 CompletableFuture<T> singlePartFuture =
-                    s3AsyncClient.presignedUrlExtension().getObject(presignedRequest, asyncResponseTransformer);
+                        s3AsyncClient.presignedUrlExtension().getObject(presignedRequest, asyncResponseTransformer);
                 CompletableFutureUtils.forwardResultTo(singlePartFuture, returnFuture);
                 return;
             }
 
             log.debug(() -> String.format("Starting multipart download for presigned URL with total content length: %d",
-                                          totalContentLength));
+                    totalContentLength));
             performMultipartDownload(presignedRequest, asyncResponseTransformer, contentRangeInfo, returnFuture);
         });
 
@@ -101,21 +109,21 @@ public class PresignedUrlDownloadHelper {
     private CompletableFuture<ContentRangeInfo> getContentRangeInfo(PresignedUrlDownloadRequest request) {
         // Make a request with Range: bytes=0-0 to get Content-Range header
         PresignedUrlDownloadRequest headRequest = request.toBuilder()
-                                                         .range(BYTES_RANGE_PREFIX + "0-0")
-                                                         .build();
+                .range(BYTES_RANGE_PREFIX + "0-0")
+                .build();
 
         return s3AsyncClient.presignedUrlExtension()
-                            .getObject(headRequest, AsyncResponseTransformer.toBytes())
-                            .thenApply(response -> {
-                                GetObjectResponse getObjectResponse = response.response();
-                                String contentRange = getObjectResponse.contentRange();
+                .getObject(headRequest, AsyncResponseTransformer.toBytes())
+                .thenApply(response -> {
+                    GetObjectResponse getObjectResponse = response.response();
+                    String contentRange = getObjectResponse.contentRange();
 
-                                if (contentRange == null) {
-                                    throw SdkClientException.create("Content-Range header not found in response");
-                                }
+                    if (contentRange == null) {
+                        throw SdkClientException.create("Content-Range header not found in response");
+                    }
 
-                                return parseContentRange(contentRange, getObjectResponse);
-                            });
+                    return parseContentRange(contentRange, getObjectResponse);
+                });
     }
 
     private ContentRangeInfo parseContentRange(String contentRange, GetObjectResponse response) {
@@ -129,24 +137,24 @@ public class PresignedUrlDownloadHelper {
     }
 
     private <T> void performMultipartDownload(
-        PresignedUrlDownloadRequest presignedRequest,
-        AsyncResponseTransformer<GetObjectResponse, T> asyncResponseTransformer,
-        ContentRangeInfo contentRangeInfo,
-        CompletableFuture<T> returnFuture) {
+            PresignedUrlDownloadRequest presignedRequest,
+            AsyncResponseTransformer<GetObjectResponse, T> asyncResponseTransformer,
+            ContentRangeInfo contentRangeInfo,
+            CompletableFuture<T> returnFuture) {
 
         SplittingTransformerConfiguration splittingConfig = SplittingTransformerConfiguration.builder()
-                                                                                             .bufferSizeInBytes(bufferSizeInBytes)
-                                                                                             .build();
+                .bufferSizeInBytes(bufferSizeInBytes)
+                .build();
 
         AsyncResponseTransformer.SplitResult<GetObjectResponse, T> split =
-            asyncResponseTransformer.split(splittingConfig);
+                asyncResponseTransformer.split(splittingConfig);
 
         PresignedUrlMultipartDownloaderSubscriber subscriber =
-            new PresignedUrlMultipartDownloaderSubscriber(
-                s3AsyncClient,
-                presignedRequest,
-                contentRangeInfo.totalLength,
-                partSizeInBytes);
+                new PresignedUrlMultipartDownloaderSubscriber(
+                        s3AsyncClient,
+                        presignedRequest,
+                        contentRangeInfo.totalLength,
+                        partSizeInBytes);
 
         split.publisher().subscribe(subscriber);
 

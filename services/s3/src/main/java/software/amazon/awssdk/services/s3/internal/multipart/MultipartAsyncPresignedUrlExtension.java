@@ -30,23 +30,23 @@ public class MultipartAsyncPresignedUrlExtension implements AsyncPresignedUrlExt
     private final PresignedUrlDownloadHelper downloadHelper;
 
     public MultipartAsyncPresignedUrlExtension(
-        S3AsyncClient s3AsyncClient,
-        AsyncPresignedUrlExtension delegate,
-        long bufferSizeInBytes,
-        long partSizeInBytes,
-        long multipartDownloadThresholdInBytes) {
+            S3AsyncClient s3AsyncClient,
+            AsyncPresignedUrlExtension delegate,
+            long bufferSizeInBytes,
+            long partSizeInBytes,
+            long multipartDownloadThresholdInBytes) {
         this.delegate = delegate;
         this.downloadHelper = new PresignedUrlDownloadHelper(
-            s3AsyncClient,
-            bufferSizeInBytes,
-            partSizeInBytes,
-            multipartDownloadThresholdInBytes);
+                s3AsyncClient,
+                bufferSizeInBytes,
+                partSizeInBytes,
+                multipartDownloadThresholdInBytes);
     }
 
     @Override
     public <ReturnT> CompletableFuture<ReturnT> getObject(
-        PresignedUrlDownloadRequest presignedUrlDownloadRequest,
-        AsyncResponseTransformer<GetObjectResponse, ReturnT> asyncResponseTransformer) {
+            PresignedUrlDownloadRequest presignedUrlDownloadRequest,
+            AsyncResponseTransformer<GetObjectResponse, ReturnT> asyncResponseTransformer) {
         return downloadHelper.downloadObject(presignedUrlDownloadRequest, asyncResponseTransformer);
     }
 }

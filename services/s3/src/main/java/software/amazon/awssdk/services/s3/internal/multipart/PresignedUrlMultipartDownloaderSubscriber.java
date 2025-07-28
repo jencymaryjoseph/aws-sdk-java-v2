@@ -29,7 +29,7 @@ import software.amazon.awssdk.utils.Validate;
 
 @SdkInternalApi
 public class PresignedUrlMultipartDownloaderSubscriber
-    implements Subscriber<AsyncResponseTransformer<GetObjectResponse, GetObjectResponse>> {
+        implements Subscriber<AsyncResponseTransformer<GetObjectResponse, GetObjectResponse>> {
 
     private static final Logger log = Logger.loggerFor(PresignedUrlMultipartDownloaderSubscriber.class);
     private static final String BYTES_RANGE_PREFIX = "bytes=";
@@ -46,19 +46,19 @@ public class PresignedUrlMultipartDownloaderSubscriber
     private Subscription subscription;
 
     public PresignedUrlMultipartDownloaderSubscriber(
-        S3AsyncClient s3,
-        PresignedUrlDownloadRequest baseRequest,
-        long totalContentLength,
-        long partSizeInBytes) {
+            S3AsyncClient s3,
+            PresignedUrlDownloadRequest baseRequest,
+            long totalContentLength,
+            long partSizeInBytes) {
         this(s3, baseRequest, totalContentLength, partSizeInBytes, 0);
     }
 
     public PresignedUrlMultipartDownloaderSubscriber(
-        S3AsyncClient s3,
-        PresignedUrlDownloadRequest baseRequest,
-        long totalContentLength,
-        long partSizeInBytes,
-        int completedParts) {
+            S3AsyncClient s3,
+            PresignedUrlDownloadRequest baseRequest,
+            long totalContentLength,
+            long partSizeInBytes,
+            int completedParts) {
         this.s3 = Validate.paramNotNull(s3, "s3AsyncClient");
         this.baseRequest = Validate.paramNotNull(baseRequest, "baseRequest");
         this.totalContentLength = totalContentLength;
@@ -101,10 +101,10 @@ public class PresignedUrlMultipartDownloaderSubscriber
 
         PresignedUrlDownloadRequest partRequest = createPartRequest(nextPartIndex);
         log.debug(() -> String.format("Sending presigned URL request for part %d (range: %s)",
-                                      nextPartIndex + 1, partRequest.range()));
+                nextPartIndex + 1, partRequest.range()));
 
         CompletableFuture<GetObjectResponse> getObjectFuture =
-            s3.presignedUrlExtension().getObject(partRequest, asyncResponseTransformer);
+                s3.presignedUrlExtension().getObject(partRequest, asyncResponseTransformer);
 
         getObjectFuture.whenComplete((response, error) -> {
             if (error != null) {
@@ -150,7 +150,7 @@ public class PresignedUrlMultipartDownloaderSubscriber
         String rangeHeader = String.format("%s%d-%d", BYTES_RANGE_PREFIX, startByte, endByte);
 
         return baseRequest.toBuilder()
-                          .range(rangeHeader)
-                          .build();
+                .range(rangeHeader)
+                .build();
     }
 }

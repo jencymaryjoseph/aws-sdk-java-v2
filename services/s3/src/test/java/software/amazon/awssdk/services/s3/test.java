@@ -21,47 +21,47 @@ import software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequ
 
 
 public class test {
-
     public static void main(String[] args) throws MalformedURLException {
-
         // 1. generate pre signed URL
         S3Presigner presigner = S3Presigner.builder()
-                                           .build();
+                .build();
         GetObjectRequest getObjectRequest = GetObjectRequest.builder()
-                                                            .bucket("jency-test-bucket")
-                                                            .key("Amazon Q.dmg")
-                                                            .build();
+                .bucket("jency-test-bucket")
+                .key("Amazon Q.dmg")
+                .build();
         GetObjectPresignRequest presignRequest = GetObjectPresignRequest.builder()
-                                                                        .signatureDuration(java.time.Duration.ofDays(5))
-                                                                        .getObjectRequest(getObjectRequest)
-                                                                        .build();
+                .signatureDuration(java.time.Duration.ofDays(5))
+                .getObjectRequest(getObjectRequest)
+                .build();
         PresignedGetObjectRequest presignedRequest = presigner.presignGetObject(presignRequest);
         URL presignedUrl = presignedRequest.url();
 
-
         // 2. client with multipart enabled
         S3AsyncClient s3AsyncClient =
-            S3AsyncClient.builder().multipartEnabled(true).overrideConfiguration(f ->f.addExecutionInterceptor(new HeaderLoggingInterceptor())).build();
+                S3AsyncClient.builder().multipartEnabled(true).overrideConfiguration(f ->f.addExecutionInterceptor(new HeaderLoggingInterceptor())).build();
+
+
+
 
         // 3.1 normal object
-        byte[] byteArray = s3AsyncClient.getObject(r -> r.bucket("jency-test-bucket").key("Amazon Q.dmg").partNumber(1),
-                                                   AsyncResponseTransformer.toBytes()).join().asByteArray();
-
-        System.out.println("byteArray " + byteArray.length);
+//        byte[] byteArray = s3AsyncClient.getObject(r -> r.bucket("jency-test-bucket").key("Amazon Q.dmg").partNumber(1),
+//                                                   AsyncResponseTransformer.toBytes()).join().asByteArray();
+//
+//        System.out.println("byteArray " + byteArray.length);
 
         // 3.1 presigned url object
-        //AsyncPresignedUrlExtension asyncPresignedUrlExtension = s3AsyncClient.presignedUrlExtension();
+        AsyncPresignedUrlExtension asyncPresignedUrlExtension = s3AsyncClient.presignedUrlExtension();
 
 
         Instant now = Instant.now();
 
         // 4.1 normal object
-        byte[] byteArray2 = s3AsyncClient.getObject(g ->g.bucket("jency-test-bucket").key("largefile.pdf"),
-                                                  AsyncResponseTransformer.toBytes()).join().asByteArray();
+//        byte[] byteArray = s3AsyncClient.getObject(g ->g.bucket("jency-test-bucket").key("Amazon Q.dmg"),
+//                                                  AsyncResponseTransformer.toBytes()).join().asByteArray();
 
         // 4.2 presigned url
-        // byte[] byteArray = asyncPresignedUrlExtension.getObject(r -> r.presignedUrl(presignedUrl),
-        //                                                         AsyncResponseTransformer.toBytes()).join().asByteArray();
+        byte[] byteArray = asyncPresignedUrlExtension.getObject(r -> r.presignedUrl(presignedUrl),
+                AsyncResponseTransformer.toBytes()).join().asByteArray();
 
         Instant then = Instant.now();
 
@@ -77,7 +77,7 @@ public class test {
             SdkHttpResponse response = context.httpResponse();
             LOG.info("=== RESPONSE HEADERS ===");
             response.headers().forEach((key, values) ->
-                                           LOG.info("{}: {}", key, String.join(", ", values))
+                    LOG.info("{}: {}", key, String.join(", ", values))
             );
             LOG.info("======================");
         }
@@ -87,7 +87,7 @@ public class test {
             SdkHttpRequest request = context.httpRequest();
             LOG.info("=== REQUEST HEADERS ===");
             request.headers().forEach((key, values) ->
-                                          LOG.info("{}: {}", key, String.join(", ", values))
+                    LOG.info("{}: {}", key, String.join(", ", values))
             );
             LOG.info("Request Method: {}", request.method());
             LOG.info("Request Path: {}", request.encodedPath());
