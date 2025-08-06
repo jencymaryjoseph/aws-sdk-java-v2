@@ -63,15 +63,15 @@ public class PresignedUrlDownloadHelper {
         AsyncResponseTransformer.SplitResult<GetObjectResponse, T> split =
             asyncResponseTransformer.split(splittingConfig);
         // TODO: PresignedUrlMultipartDownloaderSubscriber needs to be implemented in next PR
-        // PresignedUrlMultipartDownloaderSubscriber subscriber =
-        //     new PresignedUrlMultipartDownloaderSubscriber(
-        //         s3AsyncClient,
-        //         presignedRequest,
-        //         configuredPartSizeInBytes);
-        //
-        // split.publisher().subscribe(subscriber);
-        // return split.resultFuture();
-        throw new UnsupportedOperationException("Multipart presigned URL download not yet implemented - TODO in next PR");
+        PresignedUrlMultipartDownloaderSubscriber subscriber =
+            new PresignedUrlMultipartDownloaderSubscriber(
+                s3AsyncClient,
+                presignedRequest,
+                configuredPartSizeInBytes);
+
+        split.publisher().subscribe(subscriber);
+        return split.resultFuture();
+        //throw new UnsupportedOperationException("Multipart presigned URL download not yet implemented - TODO in next PR");
     }
 
     private void logSinglePartMessage(PresignedUrlDownloadRequest presignedRequest) {
