@@ -41,13 +41,16 @@ public class PresignedUrlDownloadHelper {
                                       long configuredPartSizeInBytes) {
         this.s3AsyncClient = Validate.paramNotNull(s3AsyncClient, "s3AsyncClient");
         this.originalExtension = Validate.paramNotNull(originalExtension, "originalExtension");
-        this.bufferSizeInBytes = bufferSizeInBytes;
-        this.configuredPartSizeInBytes = configuredPartSizeInBytes;
+        this.bufferSizeInBytes = Validate.isPositive(bufferSizeInBytes, "bufferSizeInBytes");
+        this.configuredPartSizeInBytes = Validate.isPositive(configuredPartSizeInBytes, "configuredPartSizeInBytes");
     }
 
     public <T> CompletableFuture<T> downloadObject(
         PresignedUrlDownloadRequest presignedRequest,
         AsyncResponseTransformer<GetObjectResponse, T> asyncResponseTransformer) {
+
+        Validate.paramNotNull(presignedRequest, "presignedRequest");
+        Validate.paramNotNull(asyncResponseTransformer, "asyncResponseTransformer");
 
         if (presignedRequest.range() != null) {
             logSinglePartMessage(presignedRequest);
@@ -59,15 +62,16 @@ public class PresignedUrlDownloadHelper {
                                                                                              .build();
         AsyncResponseTransformer.SplitResult<GetObjectResponse, T> split =
             asyncResponseTransformer.split(splittingConfig);
-
-        PresignedUrlMultipartDownloaderSubscriber subscriber =
-            new PresignedUrlMultipartDownloaderSubscriber(
-                s3AsyncClient,
-                presignedRequest,
-                configuredPartSizeInBytes);
-
-        split.publisher().subscribe(subscriber);
-        return split.resultFuture();
+        // TODO: PresignedUrlMultipartDownloaderSubscriber needs to be implemented in next PR
+        // PresignedUrlMultipartDownloaderSubscriber subscriber =
+        //     new PresignedUrlMultipartDownloaderSubscriber(
+        //         s3AsyncClient,
+        //         presignedRequest,
+        //         configuredPartSizeInBytes);
+        //
+        // split.publisher().subscribe(subscriber);
+        // return split.resultFuture();
+        throw new UnsupportedOperationException("Multipart presigned URL download not yet implemented - TODO in next PR");
     }
 
     private void logSinglePartMessage(PresignedUrlDownloadRequest presignedRequest) {

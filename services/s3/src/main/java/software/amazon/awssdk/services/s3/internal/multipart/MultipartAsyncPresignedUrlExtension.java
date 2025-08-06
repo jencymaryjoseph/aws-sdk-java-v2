@@ -22,6 +22,7 @@ import software.amazon.awssdk.services.s3.S3AsyncClient;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.presignedurl.AsyncPresignedUrlExtension;
 import software.amazon.awssdk.services.s3.presignedurl.model.PresignedUrlDownloadRequest;
+import software.amazon.awssdk.utils.Validate;
 
 /**
  * An {@link AsyncPresignedUrlExtension} that automatically converts presigned URL downloads
@@ -29,7 +30,6 @@ import software.amazon.awssdk.services.s3.presignedurl.model.PresignedUrlDownloa
  */
 @SdkInternalApi
 public class MultipartAsyncPresignedUrlExtension implements AsyncPresignedUrlExtension {
-
     private final PresignedUrlDownloadHelper downloadHelper;
 
     public MultipartAsyncPresignedUrlExtension(
@@ -37,6 +37,8 @@ public class MultipartAsyncPresignedUrlExtension implements AsyncPresignedUrlExt
             AsyncPresignedUrlExtension delegate,
             long bufferSizeInBytes,
             long partSizeInBytes) {
+        Validate.paramNotNull(s3AsyncClient, "s3AsyncClient");
+        Validate.paramNotNull(delegate, "delegate");
         this.downloadHelper = new PresignedUrlDownloadHelper(
                 s3AsyncClient,
                 delegate,
@@ -48,6 +50,8 @@ public class MultipartAsyncPresignedUrlExtension implements AsyncPresignedUrlExt
     public <ReturnT> CompletableFuture<ReturnT> getObject(
             PresignedUrlDownloadRequest presignedUrlDownloadRequest,
             AsyncResponseTransformer<GetObjectResponse, ReturnT> asyncResponseTransformer) {
+        Validate.paramNotNull(presignedUrlDownloadRequest, "presignedUrlDownloadRequest");
+        Validate.paramNotNull(asyncResponseTransformer, "asyncResponseTransformer");
         return downloadHelper.downloadObject(presignedUrlDownloadRequest, asyncResponseTransformer);
     }
 }
