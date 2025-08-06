@@ -23,24 +23,25 @@ import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.presignedurl.AsyncPresignedUrlExtension;
 import software.amazon.awssdk.services.s3.presignedurl.model.PresignedUrlDownloadRequest;
 
+/**
+ * An {@link AsyncPresignedUrlExtension} that automatically converts presigned URL downloads
+ * to multipart downloads.
+ */
 @SdkInternalApi
 public class MultipartAsyncPresignedUrlExtension implements AsyncPresignedUrlExtension {
 
-    private final AsyncPresignedUrlExtension delegate;
     private final PresignedUrlDownloadHelper downloadHelper;
 
     public MultipartAsyncPresignedUrlExtension(
             S3AsyncClient s3AsyncClient,
             AsyncPresignedUrlExtension delegate,
             long bufferSizeInBytes,
-            long partSizeInBytes,
-            long multipartDownloadThresholdInBytes) {
-        this.delegate = delegate;
+            long partSizeInBytes) {
         this.downloadHelper = new PresignedUrlDownloadHelper(
                 s3AsyncClient,
+                delegate,
                 bufferSizeInBytes,
-                partSizeInBytes,
-                multipartDownloadThresholdInBytes);
+                partSizeInBytes);
     }
 
     @Override

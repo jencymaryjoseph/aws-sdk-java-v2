@@ -17,6 +17,8 @@ package software.amazon.awssdk.services.s3.internal.multipart;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.reactivestreams.Subscriber;
 import org.reactivestreams.Subscription;
 import software.amazon.awssdk.annotations.SdkInternalApi;
@@ -27,70 +29,53 @@ import software.amazon.awssdk.services.s3.presignedurl.model.PresignedUrlDownloa
 import software.amazon.awssdk.utils.Logger;
 import software.amazon.awssdk.utils.Validate;
 
+/**
+ * Subscriber implementation for presigned URL multipart downloads using range-based requests.
+ */
 @SdkInternalApi
-public class PresignedUrlMultipartDownloaderSubscriber
-        implements Subscriber<AsyncResponseTransformer<GetObjectResponse, GetObjectResponse>> {
+public class PresignedUrlMultipartDownloaderSubscriber 
+    implements Subscriber<AsyncResponseTransformer<GetObjectResponse, GetObjectResponse>> {
 
     private static final Logger log = Logger.loggerFor(PresignedUrlMultipartDownloaderSubscriber.class);
     private static final String BYTES_RANGE_PREFIX = "bytes=";
+    private static final Pattern CONTENT_RANGE_PATTERN = Pattern.compile("bytes\\s+(\\d+)-(\\d+)/(\\d+)");
 
     private final S3AsyncClient s3;
     private final PresignedUrlDownloadRequest baseRequest;
-    private final long totalContentLength;
-    private final long partSizeInBytes;
-    private final int totalParts;
-    private final AtomicInteger completedParts;
+    private final long configuredPartSizeInBytes;
     private final CompletableFuture<Void> future;
     private final Object lock = new Object();
-    private final boolean hasFirstPart;
-    private final long firstPartSize;
 
+    private volatile MultipartDownloadState state;
     private Subscription subscription;
 
-    public PresignedUrlMultipartDownloaderSubscriber(
-            S3AsyncClient s3,
-            PresignedUrlDownloadRequest baseRequest,
-            long totalContentLength,
-            long partSizeInBytes) {
-        this(s3, baseRequest, totalContentLength, partSizeInBytes, null);
+    private static class MultipartDownloadState {
+        final long totalContentLength;
+        final long actualPartSizeInBytes;
+        final int totalParts;
+        final AtomicInteger completedParts;
+        final String etag;
+        final int expectedRequestCount;
+
+        MultipartDownloadState(long totalLength, long partSize, int totalParts, String etag) {
+            this.totalContentLength = totalLength;
+            this.actualPartSizeInBytes = partSize;
+            this.totalParts = totalParts;
+            this.completedParts = new AtomicInteger(1);
+            this.etag = etag;
+            this.expectedRequestCount = totalParts;
+        }
     }
 
     public PresignedUrlMultipartDownloaderSubscriber(
             S3AsyncClient s3,
             PresignedUrlDownloadRequest baseRequest,
-            long totalContentLength,
-            long partSizeInBytes,
-            Object firstPartInfo) {
+            long configuredPartSizeInBytes) {
         this.s3 = Validate.paramNotNull(s3, "s3AsyncClient");
         this.baseRequest = Validate.paramNotNull(baseRequest, "baseRequest");
-        this.totalContentLength = totalContentLength;
-        this.partSizeInBytes = partSizeInBytes;
-        
-        // Handle first part info if provided
-        if (firstPartInfo != null) {
-            this.hasFirstPart = true;
-            // Use reflection or cast to get first part size - for now assume it matches partSizeInBytes
-            this.firstPartSize = Math.min(partSizeInBytes, totalContentLength);
-            // Calculate remaining parts (excluding the first part we already have)
-            long remainingBytes = totalContentLength - firstPartSize;
-            int remainingParts = (int) Math.ceil((double) remainingBytes / partSizeInBytes);
-            this.totalParts = remainingParts + 1; // +1 for the first part
-            this.completedParts = new AtomicInteger(1); // First part is already "completed"
-        } else {
-            this.hasFirstPart = false;
-            this.firstPartSize = 0;
-            this.totalParts = calculateTotalParts(totalContentLength, partSizeInBytes);
-            this.completedParts = new AtomicInteger(0);
-        }
-        
+        Validate.isPositive(configuredPartSizeInBytes, "configuredPartSizeInBytes");
+        this.configuredPartSizeInBytes = configuredPartSizeInBytes;
         this.future = new CompletableFuture<>();
-        
-        log.debug(() -> String.format("Initialized subscriber: totalParts=%d, hasFirstPart=%s, firstPartSize=%d", 
-                                    totalParts, hasFirstPart, firstPartSize));
-    }
-
-    private int calculateTotalParts(long contentLength, long partSize) {
-        return (int) Math.ceil((double) contentLength / partSize);
     }
 
     @Override
@@ -101,17 +86,7 @@ public class PresignedUrlMultipartDownloaderSubscriber
                 return;
             }
             this.subscription = s;
-            
-            // If we already have the first part, we need to request parts starting from the second part
-            if (hasFirstPart && completedParts.get() < totalParts) {
-                this.subscription.request(1);
-            } else if (!hasFirstPart) {
-                this.subscription.request(1);
-            } else {
-                // All parts are already completed (single part case)
-                log.debug(() -> "All parts already completed, finishing download");
-                subscription.cancel();
-            }
+            s.request(1);
         }
     }
 
@@ -119,47 +94,191 @@ public class PresignedUrlMultipartDownloaderSubscriber
     public void onNext(AsyncResponseTransformer<GetObjectResponse, GetObjectResponse> asyncResponseTransformer) {
         if (asyncResponseTransformer == null) {
             subscription.cancel();
-            throw new NullPointerException("onNext must not be called with null asyncResponseTransformer");
+            throw new NullPointerException("onNext must not be called with null transformer");
         }
 
-        int currentCompletedParts = completedParts.get();
-        
-        // Calculate which part we're requesting (accounting for first part if already downloaded)
-        int partIndex = hasFirstPart ? currentCompletedParts : currentCompletedParts;
+        if (state == null) {
+            performSizeDiscoveryAndFirstPart(asyncResponseTransformer);
+        } else {
+            downloadNextPart(asyncResponseTransformer);
+        }
+    }
 
-        if (currentCompletedParts >= totalParts) {
-            log.debug(() -> String.format("Completing multipart download after a total of %d parts downloaded.", totalParts));
-            subscription.cancel();
+    private void performSizeDiscoveryAndFirstPart(AsyncResponseTransformer<GetObjectResponse,
+                                                    GetObjectResponse> asyncResponseTransformer) {
+        long endByte = configuredPartSizeInBytes - 1;
+        String firstPartRange = String.format("%s0-%d", BYTES_RANGE_PREFIX, endByte);
+        
+        PresignedUrlDownloadRequest firstPartRequest = baseRequest.toBuilder()
+                                                                  .range(firstPartRange)
+                                                                  .build();
+
+        s3.presignedUrlExtension().getObject(firstPartRequest, asyncResponseTransformer)
+            .whenComplete((response, error) -> {
+                if (error != null) {
+                    log.debug(() -> "Error encountered during first part request");
+                    onError(error);
+                    return;
+                }
+
+                try {
+                    // Parse total size from Content-Range header
+                    String contentRange = response.contentRange();
+                    if (contentRange == null) {
+                        onError(new IllegalStateException("No Content-Range header in response"));
+                        return;
+                    }
+
+                    long totalSize = parseContentRangeForTotalSize(contentRange);
+
+                    if (totalSize <= configuredPartSizeInBytes) {
+                        subscription.cancel();
+                        return;
+                    }
+
+                    String etag = response.eTag();
+                    if (etag == null) {
+                        onError(new IllegalStateException("No ETag in response, cannot ensure consistency"));
+                        return;
+                    }
+
+                    initializeStateAfterFirstPart(totalSize, etag);
+                    
+                    if (state.totalParts > 1) {
+                        subscription.request(1);
+                    } else {
+                        subscription.cancel();
+                    }
+
+                } catch (Exception e) {
+                    log.debug(() -> "Error during first part processing", e);
+                    onError(e);
+                }
+            });
+    }
+
+    private void downloadNextPart(AsyncResponseTransformer<GetObjectResponse, GetObjectResponse> transformer) {
+        int nextPartIndex = state.completedParts.get();
+        
+        if (nextPartIndex >= state.totalParts) {
+            try {
+                validateTotalRequestCount();
+                subscription.cancel();
+            } catch (Exception validationError) {
+                log.debug(() -> "Final validation failed", validationError);
+                onError(validationError);
+            }
             return;
         }
 
-        PresignedUrlDownloadRequest partRequest = createPartRequest(partIndex);
-        log.debug(() -> String.format("Sending presigned URL request for part %d (range: %s)",
-                partIndex + 1, partRequest.range()));
+        PresignedUrlDownloadRequest partRequest = createPartRequest(nextPartIndex);
+        String expectedRange = partRequest.range();
+        
+        s3.presignedUrlExtension().getObject(partRequest, transformer)
+            .whenComplete((response, error) -> {
+                if (error != null) {
+                    log.debug(() -> "Error encountered during part request with range=" + expectedRange);
+                    onError(error);
+                } else {
+                    try {
+                        validatePartResponse(response, nextPartIndex, expectedRange);
 
-        CompletableFuture<GetObjectResponse> getObjectFuture =
-                s3.presignedUrlExtension().getObject(partRequest, asyncResponseTransformer);
-
-        getObjectFuture.whenComplete((response, error) -> {
-            if (error != null) {
-                log.debug(() -> "Error encountered during presigned URL request for part " + (partIndex + 1), error);
-                onError(error);
-            } else {
-                // SEP Step 6: Validate GetObject response for each part
-                try {
-                    validatePartResponse(response, partRequest, partIndex);
-                    requestMoreIfNeeded(response);
-                } catch (Exception validationError) {
-                    log.error(() -> String.format("Validation failed for part %d: %s", 
-                                                 partIndex + 1, validationError.getMessage()));
-                    onError(validationError);
+                        int completedCount = state.completedParts.incrementAndGet();
+                        if (completedCount < state.totalParts) {
+                            subscription.request(1);
+                        } else {
+                            validateTotalRequestCount();
+                            subscription.cancel();
+                        }
+                    } catch (Exception validationError) {
+                        log.debug(() -> "Validation failed for part " + (nextPartIndex + 1));
+                        onError(validationError);
+                    }
                 }
+            });
+    }
+
+    private void initializeStateAfterFirstPart(long totalSize, String etag) {
+        if (totalSize <= 0) {
+            throw new IllegalArgumentException("Total size must be positive: " + totalSize);
+        }
+        if (etag == null || etag.trim().isEmpty()) {
+            throw new IllegalArgumentException("ETag cannot be null or empty");
+        }
+        
+        long optimalPartSize = calculateOptimalPartSize(totalSize);
+        int totalParts = calculateTotalParts(totalSize, optimalPartSize);
+
+        this.state = new MultipartDownloadState(totalSize, optimalPartSize, totalParts, etag.trim());
+    }
+
+    private long parseContentRangeForTotalSize(String contentRange) {
+        if (contentRange == null || contentRange.trim().isEmpty()) {
+            throw new IllegalArgumentException("Content-Range header is null or empty");
+        }
+        
+        Matcher matcher = CONTENT_RANGE_PATTERN.matcher(contentRange.trim());
+        if (!matcher.matches()) {
+            throw new IllegalArgumentException("Invalid Content-Range header format: " + contentRange + 
+                                             ". Expected format: 'bytes start-end/total'");
+        }
+
+        try {
+            long totalLength = Long.parseLong(matcher.group(3));
+            if (totalLength <= 0) {
+                throw new IllegalArgumentException("Invalid total length in Content-Range header: " + totalLength);
             }
-        });
+            
+            return totalLength;
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Invalid number format in Content-Range header: " + contentRange, e);
+        }
+    }
+
+    private long calculateOptimalPartSize(long totalContentLength) {
+        if (totalContentLength <= 0) {
+            throw new IllegalArgumentException("Total content length must be positive: " + totalContentLength);
+        }
+        return Math.min(configuredPartSizeInBytes, totalContentLength);
+    }
+
+    private int calculateTotalParts(long contentLength, long partSize) {
+        int totalParts = (int) Math.ceil((double) contentLength / partSize);
+        return totalParts;
+    }
+
+    private PresignedUrlDownloadRequest createPartRequest(int partIndex) {
+        if (state == null) {
+            throw new IllegalStateException("Cannot create part request before state is initialized");
+        }
+        
+        long startByte = partIndex * state.actualPartSizeInBytes;
+        long endByte = Math.min(startByte + state.actualPartSizeInBytes - 1, state.totalContentLength - 1);
+
+        if (startByte < 0) {
+            throw new IllegalStateException("Start byte cannot be negative: " + startByte);
+        }
+        if (startByte >= state.totalContentLength) {
+            throw new IllegalStateException(String.format(
+                "Start byte (%d) exceeds total content length (%d) for part %d", 
+                startByte, state.totalContentLength, partIndex));
+        }
+        if (endByte < startByte) {
+            throw new IllegalStateException(String.format(
+                "End byte (%d) is less than start byte (%d) for part %d", 
+                endByte, startByte, partIndex));
+        }
+
+        String rangeHeader = String.format("%s%d-%d", BYTES_RANGE_PREFIX, startByte, endByte);
+
+        return baseRequest.toBuilder()
+                .range(rangeHeader)
+                .build();
     }
 
     @Override
     public void onError(Throwable t) {
+        log.debug(() -> "Error in multipart download", t);
         future.completeExceptionally(t);
     }
 
@@ -169,124 +288,46 @@ public class PresignedUrlMultipartDownloaderSubscriber
     }
 
     public CompletableFuture<Void> future() {
-        return future;
+        return this.future;
     }
 
-    private void requestMoreIfNeeded(GetObjectResponse response) {
-        int totalComplete = completedParts.incrementAndGet();
-        log.debug(() -> String.format("Completed part %d of %d", totalComplete, totalParts));
-
-        if (totalComplete < totalParts) {
-            subscription.request(1);
-        } else {
-            // SEP Step 7: Validate that total number of ranged GET requests matches expected
-            try {
-                validateTotalPartsCompleted(totalComplete);
-                log.debug(() -> "All parts downloaded, completing multipart download");
-                subscription.cancel();
-            } catch (Exception validationError) {
-                log.error(() -> String.format("Final validation failed: %s", validationError.getMessage()));
-                onError(validationError);
-            }
+    private void validatePartResponse(GetObjectResponse response, int partIndex, String expectedRange) {
+        String actualContentRange = response.contentRange();
+        if (actualContentRange == null) {
+            throw new IllegalStateException("Missing Content-Range header in part response");
         }
-    }
 
-    /**
-     * SEP Step 6: Validate GetObject response for each part
-     */
-    private void validatePartResponse(GetObjectResponse response, PresignedUrlDownloadRequest partRequest, int partIndex) {
-        String requestedRange = partRequest.range();
-        String responseContentRange = response.contentRange();
-        
-        // Validate that ContentRange matches with the requested range
-        if (responseContentRange == null) {
+        String expectedRangeValue = expectedRange.replace(BYTES_RANGE_PREFIX, "");
+        if (!actualContentRange.contains(expectedRangeValue)) {
             throw new IllegalStateException(String.format(
-                "Missing Content-Range header in response for part %d (requested range: %s)", 
-                partIndex + 1, requestedRange));
+                "Content-Range mismatch: expected %s, got %s", expectedRange, actualContentRange));
         }
-        
-        // Extract requested range for comparison
-        String expectedRangePattern = requestedRange.replace("bytes=", "bytes ");
-        if (!responseContentRange.startsWith(expectedRangePattern.split("/")[0])) {
-            log.warn(() -> String.format(
-                "Content-Range mismatch for part %d: requested=%s, received=%s", 
-                partIndex + 1, requestedRange, responseContentRange));
-            // Note: This is a warning rather than error as some S3 implementations may vary slightly
-        }
-        
-        // Validate content length matches expected part size (except for last part)
-        Long contentLength = response.contentLength();
-        if (contentLength != null) {
-            long expectedSize = calculateExpectedPartSize(partIndex);
-            if (!contentLength.equals(expectedSize)) {
-                log.debug(() -> String.format(
-                    "Part %d size validation: expected=%d, actual=%d (may be last part)", 
-                    partIndex + 1, expectedSize, contentLength));
-            }
-        }
-        
-        log.debug(() -> String.format("Part %d validation passed: range=%s, contentLength=%s", 
-                                    partIndex + 1, responseContentRange, contentLength));
-    }
 
-    /**
-     * SEP Step 7: Validate that total number of ranged GET requests sent matches expected
-     */
-    private void validateTotalPartsCompleted(int actualPartsCompleted) {
-        if (actualPartsCompleted != totalParts) {
+        long expectedPartSize = calculateExpectedPartSize(partIndex);
+        Long actualContentLength = response.contentLength();
+        if (actualContentLength == null || actualContentLength != expectedPartSize) {
             throw new IllegalStateException(String.format(
-                "Part count mismatch: expected %d parts, but completed %d parts", 
-                totalParts, actualPartsCompleted));
+                "Part size mismatch: expected %d bytes, got %s bytes", expectedPartSize, actualContentLength));
         }
-        
-        log.debug(() -> String.format("Total parts validation passed: %d parts completed as expected", totalParts));
+
+        String responseETag = response.eTag();
+        if (responseETag != null && state.etag != null && !state.etag.equals(responseETag)) {
+            throw new IllegalStateException("ETag mismatch - object may have changed during download");
+        }
     }
 
-    /**
-     * Calculate expected part size for validation
-     */
     private long calculateExpectedPartSize(int partIndex) {
-        if (hasFirstPart && partIndex == 0) {
-            return firstPartSize;
-        }
-        
-        long startByte;
-        if (hasFirstPart) {
-            startByte = firstPartSize + (partIndex - 1) * partSizeInBytes;
-        } else {
-            startByte = partIndex * partSizeInBytes;
-        }
-        
-        long endByte = Math.min(startByte + partSizeInBytes - 1, totalContentLength - 1);
+        long startByte = partIndex * state.actualPartSizeInBytes;
+        long endByte = Math.min(startByte + state.actualPartSizeInBytes - 1, state.totalContentLength - 1);
         return endByte - startByte + 1;
     }
 
-    private PresignedUrlDownloadRequest createPartRequest(int partIndex) {
-        // Calculate byte range for this part
-        long startByte;
-        long endByte;
-        
-        if (hasFirstPart) {
-            // Skip the first part since we already have it
-            startByte = firstPartSize + (partIndex - 1) * partSizeInBytes;
-            endByte = Math.min(startByte + partSizeInBytes - 1, totalContentLength - 1);
-        } else {
-            // Standard calculation
-            startByte = partIndex * partSizeInBytes;
-            endByte = Math.min(((partIndex + 1) * partSizeInBytes) - 1, totalContentLength - 1);
-        }
-
-        // Validate range
-        if (startByte >= totalContentLength) {
+    private void validateTotalRequestCount() {
+        int actualRequests = state.completedParts.get();
+        if (actualRequests != state.expectedRequestCount) {
             throw new IllegalStateException(String.format(
-                "Invalid range calculation: startByte=%d >= totalContentLength=%d for partIndex=%d", 
-                startByte, totalContentLength, partIndex));
+                "Request count validation failed: expected %d, actual %d", 
+                state.expectedRequestCount, actualRequests));
         }
-
-        String rangeHeader = String.format("%s%d-%d", BYTES_RANGE_PREFIX, startByte, endByte);
-
-        return baseRequest.toBuilder()
-                .range(rangeHeader)
-                .build();
     }
 }

@@ -121,12 +121,11 @@ public final class MultipartS3AsyncClient extends DelegatingS3AsyncClient {
 
     @Override
     public AsyncPresignedUrlExtension presignedUrlExtension() {
-        AsyncPresignedUrlExtension delegateExtension = ((S3AsyncClient)delegate()).presignedUrlExtension();
+        AsyncPresignedUrlExtension delegateExtension = ((S3AsyncClient) delegate()).presignedUrlExtension();
         return new MultipartAsyncPresignedUrlExtension(
             (S3AsyncClient) delegate(),
             delegateExtension,
             apiCallBufferSize,
-            this.minPartSizeInBytes,
-            this.thresholdInBytes);
+            minPartSizeInBytes);
     }
 }
