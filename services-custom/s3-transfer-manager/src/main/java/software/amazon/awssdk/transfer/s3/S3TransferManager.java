@@ -45,6 +45,7 @@ import software.amazon.awssdk.transfer.s3.model.PresignedDownloadFileRequest;
 import software.amazon.awssdk.transfer.s3.model.PresignedDownloadRequest;
 import software.amazon.awssdk.transfer.s3.model.ResumableFileDownload;
 import software.amazon.awssdk.transfer.s3.model.ResumableFileUpload;
+import software.amazon.awssdk.transfer.s3.model.ResumablePresignedDownload;
 import software.amazon.awssdk.transfer.s3.model.Upload;
 import software.amazon.awssdk.transfer.s3.model.UploadDirectoryRequest;
 import software.amazon.awssdk.transfer.s3.model.UploadFileRequest;
@@ -788,6 +789,62 @@ public interface S3TransferManager extends SdkAutoCloseable {
     default <ResultT> Download<ResultT> download(PresignedDownloadRequest<ResultT> presignedDownloadRequest) {
         throw new UnsupportedOperationException();
     }
+
+    /**
+     * Resumes a presigned URL file download operation. This download operation uses the same configuration as the original download.
+     * Any content that has already been fetched since the last pause will be skipped and only the remaining data will be downloaded.
+     * <p>
+     * <b>Important:</b> Presigned URLs have expiration times. If the URL expires before resume, the operation will fail.
+     * The resume token does not regenerate URLs - applications must handle URL expiration by generating fresh presigned URLs.
+     * <p>
+     * If it is determined that the source S3 object or the destination file has been modified since the last pause, the SDK
+     * will fail the resume operation to prevent data corruption.
+     * <p>
+     * <b>Note:</b> Unlike regular downloads, presigned URL resume tokens cannot be serialized to disk due to security concerns
+     * and URL expiration risks. Resume tokens must be kept in memory only.
+     *
+     * <p>
+     * <b>Usage Example:</b>
+     * {@snippet :
+     *         S3TransferManager transferManager = S3TransferManager.create();
+     *
+     *         PresignedDownloadFileRequest downloadRequest = PresignedDownloadFileRequest.builder()
+     *                                                                                   .presignedUrl(presignedUrl)
+     *                                                                                   .destination(Paths.get("myFile.txt"))
+     *                                                                                   .build();
+     *
+     *         // Initiate the transfer
+     *         FileDownload download = transferManager.downloadFile(downloadRequest);
+     *
+     *         // Pause the download
+     *         ResumablePresignedDownload resumableDownload = download.pause();
+     *
+     *         // Check URL expiration before resume
+     *         if (resumableDownload.isUrlExpired()) {
+     *             // Generate fresh presigned URL and start new download
+     *             URL newPresignedUrl = generateFreshPresignedUrl();
+     *             download = transferManager.downloadFile(
+     *                 downloadRequest.toBuilder().presignedUrl(newPresignedUrl).build());
+     *         } else {
+     *             // Resume with existing token
+     *             download = transferManager.resumeDownloadFile(resumableDownload);
+     *         }
+     *
+     *         // Wait for the transfer to complete
+     *         download.completionFuture().join();
+     * }
+     *
+     * @param resumablePresignedDownload the presigned download to resume.
+     * @return A new {@code FileDownload} object to use to check the state of the download.
+     * @throws SdkClientException if the presigned URL has expired
+     * @see #downloadFile(PresignedDownloadFileRequest)
+     * @see ResumablePresignedDownload#isUrlExpired()
+     */
+    default FileDownload resumeDownloadFile(ResumablePresignedDownload resumablePresignedDownload) {
+        throw new UnsupportedOperationException();
+    }
+
+
 
     /**
      * Create an {@code S3TransferManager} using the default values.

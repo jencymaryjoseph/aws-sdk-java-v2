@@ -26,7 +26,9 @@ import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.transfer.s3.model.CompletedFileDownload;
 import software.amazon.awssdk.transfer.s3.model.DownloadFileRequest;
 import software.amazon.awssdk.transfer.s3.model.FileDownload;
+import software.amazon.awssdk.transfer.s3.model.PresignedDownloadFileRequest;
 import software.amazon.awssdk.transfer.s3.model.ResumableFileDownload;
+import software.amazon.awssdk.transfer.s3.model.ResumablePresignedDownload;
 import software.amazon.awssdk.transfer.s3.progress.TransferProgress;
 import software.amazon.awssdk.transfer.s3.progress.TransferProgressSnapshot;
 import software.amazon.awssdk.utils.Lazy;
@@ -37,9 +39,11 @@ import software.amazon.awssdk.utils.Validate;
 public final class DefaultFileDownload implements FileDownload {
     private final CompletableFuture<CompletedFileDownload> completionFuture;
     private final Lazy<ResumableFileDownload> resumableFileDownload;
+    private final Lazy<ResumablePresignedDownload> resumablePresignedDownload;
     private final TransferProgress progress;
     private final Supplier<DownloadFileRequest> requestSupplier;
     private final ResumableFileDownload resumedDownload;
+    private final PresignedDownloadFileRequest presignedRequest;
 
     public DefaultFileDownload(CompletableFuture<CompletedFileDownload> completedFileDownloadFuture,
                                TransferProgress progress,
@@ -47,9 +51,23 @@ public final class DefaultFileDownload implements FileDownload {
                                ResumableFileDownload resumedDownload) {
         this.completionFuture = Validate.paramNotNull(completedFileDownloadFuture, "completedFileDownloadFuture");
         this.progress = Validate.paramNotNull(progress, "progress");
-        this.requestSupplier = Validate.paramNotNull(requestSupplier, "requestSupplier");
+        this.requestSupplier = requestSupplier;
         this.resumableFileDownload = new Lazy<>(this::doPause);
+        this.resumablePresignedDownload = new Lazy<>(this::doPresignedPause);
         this.resumedDownload = resumedDownload;
+        this.presignedRequest = null;
+    }
+    
+    public DefaultFileDownload(CompletableFuture<CompletedFileDownload> completedFileDownloadFuture,
+                               TransferProgress progress,
+                               PresignedDownloadFileRequest presignedRequest) {
+        this.completionFuture = Validate.paramNotNull(completedFileDownloadFuture, "completedFileDownloadFuture");
+        this.progress = Validate.paramNotNull(progress, "progress");
+        this.requestSupplier = null;
+        this.resumableFileDownload = new Lazy<>(this::doPause);
+        this.resumablePresignedDownload = new Lazy<>(this::doPresignedPause);
+        this.resumedDownload = null;
+        this.presignedRequest = presignedRequest;
     }
 
     @Override
@@ -59,7 +77,20 @@ public final class DefaultFileDownload implements FileDownload {
 
     @Override
     public ResumableFileDownload pause() {
+        if (presignedRequest != null) {
+            throw new UnsupportedOperationException("Use pausePresigned() for presigned URL downloads");
+        }
         return resumableFileDownload.getValue();
+    }
+    
+    /**
+     * Pause a presigned URL download and return a resume token
+     */
+    public ResumablePresignedDownload pausePresigned() {
+        if (presignedRequest == null) {
+            throw new UnsupportedOperationException("pausePresigned() is only supported for presigned URL downloads");
+        }
+        return resumablePresignedDownload.getValue();
     }
 
     private ResumableFileDownload doPause() {
@@ -96,6 +127,37 @@ public final class DefaultFileDownload implements FileDownload {
                                     .totalSizeInBytes(totalSizeInBytes)
                                     .completedParts(completedParts)
                                     .build();
+    }
+    
+    private ResumablePresignedDownload doPresignedPause() {
+        completionFuture.cancel(true);
+        
+        if (presignedRequest == null) {
+            throw new IllegalStateException("Cannot pause presigned download without presigned request");
+        }
+        
+        String s3objectEtag = null;
+        Long totalSizeInBytes = null;
+        TransferProgressSnapshot snapshot = progress.snapshot();
+        
+        if (snapshot.sdkResponse().isPresent() && snapshot.sdkResponse().get() instanceof GetObjectResponse) {
+            GetObjectResponse getObjectResponse = (GetObjectResponse) snapshot.sdkResponse().get();
+            s3objectEtag = getObjectResponse.eTag();
+            totalSizeInBytes = getObjectResponse.contentLength();
+        }
+        
+        File destination = presignedRequest.destination().toFile();
+        long bytesTransferred = destination.exists() ? destination.length() : 0;
+        Instant fileLastModified = destination.exists() ? 
+            Instant.ofEpochMilli(destination.lastModified()) : Instant.now();
+        
+        return ResumablePresignedDownload.builder()
+                                         .originalRequest(presignedRequest)
+                                         .bytesTransferred(bytesTransferred)
+                                         .s3ObjectEtag(s3objectEtag)
+                                         .totalSizeInBytes(totalSizeInBytes)
+                                         .fileLastModified(fileLastModified)
+                                         .build();
     }
 
     @Override

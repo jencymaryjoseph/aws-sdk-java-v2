@@ -17,6 +17,8 @@ package software.amazon.awssdk.transfer.s3.internal;
 
 import static software.amazon.awssdk.transfer.s3.internal.utils.FileUtils.fileNotModified;
 
+import java.nio.file.Path;
+import java.time.Instant;
 import software.amazon.awssdk.annotations.SdkInternalApi;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
 import software.amazon.awssdk.services.s3.model.AbortMultipartUploadRequest;
@@ -87,5 +89,23 @@ public class PauseResumeHelper {
         }
 
         return hasResumeToken;
+    }
+
+    /**
+     * Check if a file has been modified since the given timestamp
+     */
+    protected boolean fileModified(Path filePath, Instant recordedLastModified) {
+        try {
+            java.io.File file = filePath.toFile();
+            if (!file.exists()) {
+                return true; // File doesn't exist, consider it modified
+            }
+            
+            Instant currentLastModified = Instant.ofEpochMilli(file.lastModified());
+            return !currentLastModified.equals(recordedLastModified);
+        } catch (Exception e) {
+            log.debug(() -> "Error checking file modification time: " + e.getMessage());
+            return true; // If we can't check, assume it's modified for safety
+        }
     }
 }

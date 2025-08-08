@@ -17,7 +17,7 @@ package software.amazon.awssdk.transfer.s3.model;
 
 import java.util.concurrent.CompletableFuture;
 import software.amazon.awssdk.annotations.SdkPublicApi;
-import software.amazon.awssdk.services.s3.model.GetObjectResponse;
+
 import software.amazon.awssdk.transfer.s3.progress.TransferProgress;
 
 /**

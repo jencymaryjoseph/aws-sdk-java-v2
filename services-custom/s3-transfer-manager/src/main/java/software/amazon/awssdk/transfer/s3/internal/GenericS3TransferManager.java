@@ -22,6 +22,8 @@ import static software.amazon.awssdk.services.s3.multipart.S3MultipartExecutionA
 import static software.amazon.awssdk.services.s3.multipart.S3MultipartExecutionAttribute.RESUME_TOKEN;
 import static software.amazon.awssdk.transfer.s3.internal.utils.ResumableRequestConverter.toDownloadFileRequestAndTransformer;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -82,6 +84,7 @@ import software.amazon.awssdk.transfer.s3.model.PresignedDownloadFileRequest;
 import software.amazon.awssdk.transfer.s3.model.PresignedDownloadRequest;
 import software.amazon.awssdk.transfer.s3.model.ResumableFileDownload;
 import software.amazon.awssdk.transfer.s3.model.ResumableFileUpload;
+import software.amazon.awssdk.transfer.s3.model.ResumablePresignedDownload;
 import software.amazon.awssdk.transfer.s3.model.Upload;
 import software.amazon.awssdk.transfer.s3.model.UploadDirectoryRequest;
 import software.amazon.awssdk.transfer.s3.model.UploadFileRequest;
@@ -581,9 +584,18 @@ class GenericS3TransferManager implements S3TransferManager {
         TransferProgressUpdater progressUpdater = new TransferProgressUpdater(presignedDownloadFileRequest, null);
         progressUpdater.transferInitiated();
         
-        // Use existing AsyncResponseTransformer pattern
+        // Use existing AsyncResponseTransformer pattern and wrap it for progress tracking
         AsyncResponseTransformer<GetObjectResponse, GetObjectResponse> responseTransformer =
-            AsyncResponseTransformer.toFile(presignedDownloadFileRequest.destination());
+            AsyncResponseTransformer.toFile(presignedDownloadFileRequest.destination(),
+                                            FileTransformerConfiguration.defaultCreateOrReplaceExisting());
+        
+        // Wrap the response transformer to capture progress updates
+        try {
+            responseTransformer = progressUpdater.wrapResponseTransformer(responseTransformer);
+        } catch (Exception e) {
+            // If wrapping fails, continue without detailed progress tracking
+            log.debug(() -> "Could not wrap response transformer for progress tracking: " + e.getMessage());
+        }
         
         CompletableFuture<CompletedFileDownload> returnFuture = new CompletableFuture<>();
         progressUpdater.registerCompletion(returnFuture);
@@ -604,7 +616,7 @@ class GenericS3TransferManager implements S3TransferManager {
             returnFuture.completeExceptionally(throwable);
         }
         
-        return new DefaultFileDownload(returnFuture, progressUpdater.progress(), () -> null, null);
+        return new DefaultFileDownload(returnFuture, progressUpdater.progress(), presignedDownloadFileRequest);
     }
 
     @Override
@@ -621,13 +633,22 @@ class GenericS3TransferManager implements S3TransferManager {
         TransferProgressUpdater progressUpdater = new TransferProgressUpdater(presignedDownloadRequest, null);
         progressUpdater.transferInitiated();
         
+        // Wrap the response transformer to capture progress updates
+        AsyncResponseTransformer<GetObjectResponse, ResultT> responseTransformer = presignedDownloadRequest.responseTransformer();
+        try {
+            responseTransformer = progressUpdater.wrapResponseTransformer(responseTransformer);
+        } catch (Exception e) {
+            // If wrapping fails, continue without detailed progress tracking
+            log.debug(() -> "Could not wrap response transformer for progress tracking: " + e.getMessage());
+        }
+        
         CompletableFuture<CompletedDownload<ResultT>> returnFuture = new CompletableFuture<>();
         progressUpdater.registerCompletion(returnFuture);
         
         try {
             // Call S3AsyncClient presigned extension
             CompletableFuture<ResultT> future =
-                s3AsyncClient.presignedUrlExtension().getObject(s3Request, presignedDownloadRequest.responseTransformer());
+                s3AsyncClient.presignedUrlExtension().getObject(s3Request, responseTransformer);
             
             // Forward cancellation
             CompletableFutureUtils.forwardExceptionTo(returnFuture, future);
@@ -642,6 +663,74 @@ class GenericS3TransferManager implements S3TransferManager {
         
         return new DefaultDownload<>(returnFuture, progressUpdater.progress());
     }
+
+    // @Override
+    // public final FileDownload resumeDownloadFile(ResumablePresignedDownload resumablePresignedDownload) {
+    //     Validate.paramNotNull(resumablePresignedDownload, "resumablePresignedDownload");
+    //
+    //     // Validate URL hasn't expired
+    //     resumablePresignedDownload.validateUrlNotExpired();
+    //
+    //     // Check if file was modified since pause
+    //     PresignedDownloadFileRequest originalRequest = resumablePresignedDownload.originalRequest();
+    //     if (PAUSE_RESUME_HELPER.fileModified(originalRequest.destination(),
+    //                                          resumablePresignedDownload.fileLastModified())) {
+    //         // File was modified, start fresh download
+    //         return downloadFile(originalRequest);
+    //     }
+    //
+    //     // Resume download with range request
+    //     return doResumePresignedDownload(resumablePresignedDownload);
+    // }
+    
+    // private FileDownload doResumePresignedDownload(ResumablePresignedDownload resumablePresignedDownload) {
+    //     PresignedDownloadFileRequest originalRequest = resumablePresignedDownload.originalRequest();
+    //     long bytesTransferred = resumablePresignedDownload.bytesTransferred();
+    //
+    //     // Create range request for remaining bytes
+    //     software.amazon.awssdk.services.s3.presignedurl.model.PresignedUrlDownloadRequest s3Request =
+    //         software.amazon.awssdk.services.s3.presignedurl.model.PresignedUrlDownloadRequest.builder()
+    //             .presignedUrl(originalRequest.presignedUrl())
+    //             .range("bytes=" + bytesTransferred + "-")
+    //             .build();
+    //
+    //     // Create progress updater with existing progress
+    //     TransferProgressUpdater progressUpdater = new TransferProgressUpdater(originalRequest,
+    //                                                                           resumablePresignedDownload.totalSizeInBytes().orElse(0L));
+    //     progressUpdater.transferInitiated();
+    //
+    //     // Set up file transformer to append to existing file
+    //     AsyncResponseTransformer<GetObjectResponse, GetObjectResponse> responseTransformer =
+    //         AsyncResponseTransformer.toFile(originalRequest.destination(),
+    //                                         FileTransformerConfiguration.builder()
+    //                                                                     .writeOption(java.nio.file.StandardOpenOption.APPEND)
+    //                                                                     .build());
+    //
+    //     try {
+    //         responseTransformer = progressUpdater.wrapResponseTransformer(responseTransformer);
+    //     } catch (Exception e) {
+    //         log.debug(() -> "Could not wrap response transformer for progress tracking: " + e.getMessage());
+    //     }
+    //
+    //     CompletableFuture<CompletedFileDownload> returnFuture = new CompletableFuture<>();
+    //     progressUpdater.registerCompletion(returnFuture);
+    //
+    //     try {
+    //         CompletableFuture<GetObjectResponse> future =
+    //             s3AsyncClient.presignedUrlExtension().getObject(s3Request, responseTransformer);
+    //
+    //         CompletableFutureUtils.forwardExceptionTo(returnFuture, future);
+    //
+    //         CompletableFutureUtils.forwardTransformedResultTo(future, returnFuture,
+    //                                                           r -> CompletedFileDownload.builder()
+    //                                                                                     .response(r)
+    //                                                                                     .build());
+    //     } catch (Throwable throwable) {
+    //         returnFuture.completeExceptionally(throwable);
+    //     }
+    //
+    //     return new DefaultFileDownload(returnFuture, progressUpdater.progress(), originalRequest);
+    // }
 
     @Override
     public final void close() {

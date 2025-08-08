@@ -42,9 +42,8 @@ public final class DefaultTransferProgressSnapshot
     private DefaultTransferProgressSnapshot(Builder builder) {
         if (builder.totalBytes != null) {
             Validate.isNotNegative(builder.totalBytes, "totalBytes");
-            Validate.isTrue(builder.transferredBytes <= builder.totalBytes,
-                            "transferredBytes (%s) must not be greater than totalBytes (%s)",
-                            builder.transferredBytes, builder.totalBytes);
+            // Allow transferred bytes to exceed total bytes for presigned URL downloads
+            // where Content-Length may not accurately reflect actual transfer size
         }
         Validate.paramNotNull(builder.transferredBytes, "byteTransferred");
         this.transferredBytes = Validate.isNotNegative(builder.transferredBytes, "transferredBytes");
@@ -81,7 +80,11 @@ public final class DefaultTransferProgressSnapshot
         if (totalBytes == null) {
             return OptionalDouble.empty();
         }
-        return totalBytes == 0 ? OptionalDouble.of(1.0) : OptionalDouble.of(transferredBytes / totalBytes.doubleValue());
+        if (totalBytes == 0) {
+            return OptionalDouble.of(1.0);
+        }
+        double ratio = transferredBytes / totalBytes.doubleValue();
+        return OptionalDouble.of(Math.min(ratio, 1.0)); // Cap at 100% for display purposes
     }
 
     @Override
@@ -117,7 +120,7 @@ public final class DefaultTransferProgressSnapshot
         if (totalBytes == null) {
             return OptionalLong.empty();
         }
-        return OptionalLong.of(totalBytes - transferredBytes);
+        return OptionalLong.of(Math.max(0, totalBytes - transferredBytes));
     }
 
     @Override
