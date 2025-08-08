@@ -20,7 +20,6 @@ import static org.mockito.Mockito.when;
 
 import java.net.MalformedURLException;
 import java.nio.ByteBuffer;
-import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import org.mockito.Mockito;
 import org.reactivestreams.Subscriber;
@@ -30,7 +29,6 @@ import org.reactivestreams.tck.TestEnvironment;
 import software.amazon.awssdk.core.async.AsyncResponseTransformer;
 import software.amazon.awssdk.core.async.SdkPublisher;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
-import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.presignedurl.AsyncPresignedUrlExtension;
 import software.amazon.awssdk.services.s3.presignedurl.model.PresignedUrlDownloadRequest;

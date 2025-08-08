@@ -31,16 +31,16 @@ public class PresignedUrlDownloadHelper {
     private static final Logger log = Logger.loggerFor(PresignedUrlDownloadHelper.class);
 
     private final S3AsyncClient s3AsyncClient;
-    private final AsyncPresignedUrlExtension originalExtension;
+    private final AsyncPresignedUrlExtension asyncPresignedUrlExtension;
     private final long bufferSizeInBytes;
     private final long configuredPartSizeInBytes;
 
     public PresignedUrlDownloadHelper(S3AsyncClient s3AsyncClient,
-                                      AsyncPresignedUrlExtension originalExtension,
+                                      AsyncPresignedUrlExtension asyncPresignedUrlExtension,
                                       long bufferSizeInBytes,
                                       long configuredPartSizeInBytes) {
         this.s3AsyncClient = Validate.paramNotNull(s3AsyncClient, "s3AsyncClient");
-        this.originalExtension = Validate.paramNotNull(originalExtension, "originalExtension");
+        this.asyncPresignedUrlExtension = Validate.paramNotNull(asyncPresignedUrlExtension, "asyncPresignedUrlExtension");
         this.bufferSizeInBytes = Validate.isPositive(bufferSizeInBytes, "bufferSizeInBytes");
         this.configuredPartSizeInBytes = Validate.isPositive(configuredPartSizeInBytes, "configuredPartSizeInBytes");
     }
@@ -53,8 +53,9 @@ public class PresignedUrlDownloadHelper {
         Validate.paramNotNull(asyncResponseTransformer, "asyncResponseTransformer");
 
         if (presignedRequest.range() != null) {
-            logSinglePartMessage(presignedRequest);
-            return originalExtension.getObject(presignedRequest, asyncResponseTransformer);
+            log.debug(() -> "Using single part download because presigned URL request range is included in the request. range = "
+                            + presignedRequest.range());
+            return asyncPresignedUrlExtension.getObject(presignedRequest, asyncResponseTransformer);
         }
 
         SplittingTransformerConfiguration splittingConfig = SplittingTransformerConfiguration.builder()
@@ -62,7 +63,7 @@ public class PresignedUrlDownloadHelper {
                                                                                              .build();
         AsyncResponseTransformer.SplitResult<GetObjectResponse, T> split =
             asyncResponseTransformer.split(splittingConfig);
-        // TODO: PresignedUrlMultipartDownloaderSubscriber needs to be implemented in next PR
+
         PresignedUrlMultipartDownloaderSubscriber subscriber =
             new PresignedUrlMultipartDownloaderSubscriber(
                 s3AsyncClient,
@@ -71,17 +72,6 @@ public class PresignedUrlDownloadHelper {
 
         split.publisher().subscribe(subscriber);
         return split.resultFuture();
-        //throw new UnsupportedOperationException("Multipart presigned URL download not yet implemented - TODO in next PR");
-    }
 
-    private void logSinglePartMessage(PresignedUrlDownloadRequest presignedRequest) {
-        log.debug(() -> {
-            String reason = "";
-            if (presignedRequest.range() != null) {
-                reason = " because presigned URL request range is included in the request."
-                         + " range = " + presignedRequest.range();
-            }
-            return "Using single part download" + reason;
-        });
     }
 }

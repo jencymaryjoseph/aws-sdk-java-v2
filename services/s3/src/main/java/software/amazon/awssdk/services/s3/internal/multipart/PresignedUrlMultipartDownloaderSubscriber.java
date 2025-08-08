@@ -21,7 +21,9 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.reactivestreams.Subscriber;
 import org.reactivestreams.Subscription;
+import software.amazon.awssdk.annotations.Immutable;
 import software.amazon.awssdk.annotations.SdkInternalApi;
+import software.amazon.awssdk.annotations.ThreadSafe;
 import software.amazon.awssdk.core.async.AsyncResponseTransformer;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
@@ -30,8 +32,18 @@ import software.amazon.awssdk.utils.Logger;
 import software.amazon.awssdk.utils.Validate;
 
 /**
- * Subscriber implementation for presigned URL multipart downloads using range-based requests.
+ * A subscriber implementation that will download all individual parts for a multipart presigned URL download request.
+ * It receives individual {@link AsyncResponseTransformer} instances which will be used to perform the individual 
+ * range-based part requests using presigned URLs. This is a 'one-shot' class, it should <em>NOT</em> be reused 
+ * for more than one multipart download.
+ * 
+ * <p>Unlike the standard {@link MultipartDownloaderSubscriber} which uses S3's native multipart API with part numbers,
+ * this subscriber uses HTTP range requests against presigned URLs to achieve multipart download functionality.
+ * <p>This implementation is thread-safe and handles concurrent part downloads while maintaining proper
+ * ordering and validation of responses.</p>
  */
+@ThreadSafe
+@Immutable
 @SdkInternalApi
 public class PresignedUrlMultipartDownloaderSubscriber 
     implements Subscriber<AsyncResponseTransformer<GetObjectResponse, GetObjectResponse>> {
@@ -40,13 +52,45 @@ public class PresignedUrlMultipartDownloaderSubscriber
     private static final String BYTES_RANGE_PREFIX = "bytes=";
     private static final Pattern CONTENT_RANGE_PATTERN = Pattern.compile("bytes\\s+(\\d+)-(\\d+)/(\\d+)");
 
+    /**
+     * The S3 client used to make the individual presigned URL requests.
+     */
     private final S3AsyncClient s3;
-    private final PresignedUrlDownloadRequest baseRequest;
+
+    /**
+     * The base PresignedUrlDownloadRequest that was provided when calling the download method.
+     * It is copied for each individual request, and the copy has the range field updated 
+     * as more parts are downloaded.
+     */
+    private final PresignedUrlDownloadRequest presignedUrlDownloadRequest;
+
+    /**
+     * The configured part size in bytes for multipart downloads. This represents the desired
+     * size for each part, though the actual part size may be adjusted based on the total object size.
+     */
     private final long configuredPartSizeInBytes;
+
+    /**
+     * This future will be completed once this subscriber reaches a terminal state, failed or successfully,
+     * and will be completed accordingly.
+     */
     private final CompletableFuture<Void> future;
+
+    /**
+     * The subscription lock used to ensure thread-safe access to subscription operations.
+     */
     private final Object lock = new Object();
 
+    /**
+     * This value contains the multipart download state including total size, part information,
+     * and progress tracking. If null, it means we haven't received a response from S3 yet to 
+     * initialize the state, or the size discovery is still in progress.
+     */
     private volatile MultipartDownloadState state;
+
+    /**
+     * The subscription received from the publisher this subscriber subscribes to.
+     */
     private Subscription subscription;
 
     private static class MultipartDownloadState {
@@ -67,17 +111,31 @@ public class PresignedUrlMultipartDownloaderSubscriber
         }
     }
 
+    /**
+     * Creates a new PresignedUrlMultipartDownloaderSubscriber with the specified parameters.
+     *
+     * @param s3 the S3AsyncClient to use for making requests, must not be null
+     * @param presignedUrlDownloadRequest the base PresignedUrlDownloadRequest to copy for each part, must not be null
+     * @param configuredPartSizeInBytes the desired part size in bytes, must be positive
+     * @throws IllegalArgumentException if any parameter is invalid
+     */
     public PresignedUrlMultipartDownloaderSubscriber(
             S3AsyncClient s3,
-            PresignedUrlDownloadRequest baseRequest,
+            PresignedUrlDownloadRequest presignedUrlDownloadRequest,
             long configuredPartSizeInBytes) {
         this.s3 = Validate.paramNotNull(s3, "s3AsyncClient");
-        this.baseRequest = Validate.paramNotNull(baseRequest, "baseRequest");
+        this.presignedUrlDownloadRequest = Validate.paramNotNull(presignedUrlDownloadRequest, "presignedUrlDownloadRequest");
         Validate.isPositive(configuredPartSizeInBytes, "configuredPartSizeInBytes");
         this.configuredPartSizeInBytes = configuredPartSizeInBytes;
         this.future = new CompletableFuture<>();
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * Handles subscription setup with thread-safe access control. Only accepts one subscription
+     * and cancels any additional subscription attempts.
+     */
     @Override
     public void onSubscribe(Subscription s) {
         synchronized (lock) {
@@ -90,6 +148,16 @@ public class PresignedUrlMultipartDownloaderSubscriber
         }
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * Processes the next AsyncResponseTransformer for downloading a part. If this is the first
+     * call (state is null), performs size discovery and downloads the first part. Otherwise,
+     * downloads the next part in sequence.
+     *
+     * @param asyncResponseTransformer the transformer to use for the next part download, must not be null
+     * @throws NullPointerException if asyncResponseTransformer is null
+     */
     @Override
     public void onNext(AsyncResponseTransformer<GetObjectResponse, GetObjectResponse> asyncResponseTransformer) {
         if (asyncResponseTransformer == null) {
@@ -109,7 +177,7 @@ public class PresignedUrlMultipartDownloaderSubscriber
         long endByte = configuredPartSizeInBytes - 1;
         String firstPartRange = String.format("%s0-%d", BYTES_RANGE_PREFIX, endByte);
         
-        PresignedUrlDownloadRequest firstPartRequest = baseRequest.toBuilder()
+        PresignedUrlDownloadRequest firstPartRequest = presignedUrlDownloadRequest.toBuilder()
                                                                   .range(firstPartRange)
                                                                   .build();
 
@@ -143,7 +211,7 @@ public class PresignedUrlMultipartDownloaderSubscriber
                     }
 
                     initializeStateAfterFirstPart(totalSize, etag);
-                    
+
                     if (state.totalParts > 1) {
                         subscription.request(1);
                     } else {
@@ -173,7 +241,7 @@ public class PresignedUrlMultipartDownloaderSubscriber
 
         PresignedUrlDownloadRequest partRequest = createPartRequest(nextPartIndex);
         String expectedRange = partRequest.range();
-        
+
         s3.presignedUrlExtension().getObject(partRequest, transformer)
             .whenComplete((response, error) -> {
                 if (error != null) {
@@ -271,22 +339,38 @@ public class PresignedUrlMultipartDownloaderSubscriber
 
         String rangeHeader = String.format("%s%d-%d", BYTES_RANGE_PREFIX, startByte, endByte);
 
-        return baseRequest.toBuilder()
+        return presignedUrlDownloadRequest.toBuilder()
                 .range(rangeHeader)
                 .build();
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * Handles errors by completing the future exceptionally and logging the error.
+     */
     @Override
     public void onError(Throwable t) {
         log.debug(() -> "Error in multipart download", t);
         future.completeExceptionally(t);
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * Handles successful completion by completing the future normally.
+     */
     @Override
     public void onComplete() {
         future.complete(null);
     }
 
+    /**
+     * Returns the CompletableFuture that will be completed when this subscriber reaches
+     * a terminal state (either successfully or with an error).
+     *
+     * @return the future representing the completion of this subscriber
+     */
     public CompletableFuture<Void> future() {
         return this.future;
     }

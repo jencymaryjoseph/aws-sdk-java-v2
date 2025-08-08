@@ -78,6 +78,8 @@ import software.amazon.awssdk.transfer.s3.model.DownloadFileRequest;
 import software.amazon.awssdk.transfer.s3.model.DownloadRequest;
 import software.amazon.awssdk.transfer.s3.model.FileDownload;
 import software.amazon.awssdk.transfer.s3.model.FileUpload;
+import software.amazon.awssdk.transfer.s3.model.PresignedDownloadFileRequest;
+import software.amazon.awssdk.transfer.s3.model.PresignedDownloadRequest;
 import software.amazon.awssdk.transfer.s3.model.ResumableFileDownload;
 import software.amazon.awssdk.transfer.s3.model.ResumableFileUpload;
 import software.amazon.awssdk.transfer.s3.model.Upload;
@@ -98,6 +100,7 @@ class GenericS3TransferManager implements S3TransferManager {
     private final S3AsyncClient s3AsyncClient;
     private final UploadDirectoryHelper uploadDirectoryHelper;
     private final DownloadDirectoryHelper downloadDirectoryHelper;
+
     private final boolean isDefaultS3AsyncClient;
 
     private final TransferManagerConfiguration transferConfiguration;
@@ -112,6 +115,7 @@ class GenericS3TransferManager implements S3TransferManager {
         downloadDirectoryHelper = new DownloadDirectoryHelper(transferConfiguration,
                                                               listObjectsHelper,
                                                               this::downloadFile);
+
         this.isDefaultS3AsyncClient = isDefaultS3AsyncClient;
     }
 
@@ -125,6 +129,7 @@ class GenericS3TransferManager implements S3TransferManager {
         this.transferConfiguration = configuration;
         this.uploadDirectoryHelper = uploadDirectoryHelper;
         this.downloadDirectoryHelper = downloadDirectoryHelper;
+
     }
 
     @Override
@@ -560,6 +565,82 @@ class GenericS3TransferManager implements S3TransferManager {
         }
 
         return new DefaultCopy(returnFuture, progressUpdater.progress());
+    }
+
+    @Override
+    public final FileDownload downloadFile(PresignedDownloadFileRequest presignedDownloadFileRequest) {
+        Validate.paramNotNull(presignedDownloadFileRequest, "presignedDownloadFileRequest");
+        
+        // Create S3 service level request
+        software.amazon.awssdk.services.s3.presignedurl.model.PresignedUrlDownloadRequest s3Request = 
+            software.amazon.awssdk.services.s3.presignedurl.model.PresignedUrlDownloadRequest.builder()
+                .presignedUrl(presignedDownloadFileRequest.presignedUrl())
+                .build();
+        
+        // Use existing TransferProgressUpdater pattern
+        TransferProgressUpdater progressUpdater = new TransferProgressUpdater(presignedDownloadFileRequest, null);
+        progressUpdater.transferInitiated();
+        
+        // Use existing AsyncResponseTransformer pattern
+        AsyncResponseTransformer<GetObjectResponse, GetObjectResponse> responseTransformer =
+            AsyncResponseTransformer.toFile(presignedDownloadFileRequest.destination());
+        
+        CompletableFuture<CompletedFileDownload> returnFuture = new CompletableFuture<>();
+        progressUpdater.registerCompletion(returnFuture);
+        
+        try {
+            // Call S3AsyncClient presigned extension
+            CompletableFuture<GetObjectResponse> future =
+                s3AsyncClient.presignedUrlExtension().getObject(s3Request, responseTransformer);
+            
+            // Forward cancellation
+            CompletableFutureUtils.forwardExceptionTo(returnFuture, future);
+            
+            CompletableFutureUtils.forwardTransformedResultTo(future, returnFuture,
+                                                              r -> CompletedFileDownload.builder()
+                                                                                        .response(r)
+                                                                                        .build());
+        } catch (Throwable throwable) {
+            returnFuture.completeExceptionally(throwable);
+        }
+        
+        return new DefaultFileDownload(returnFuture, progressUpdater.progress(), () -> null, null);
+    }
+
+    @Override
+    public final <ResultT> Download<ResultT> download(PresignedDownloadRequest<ResultT> presignedDownloadRequest) {
+        Validate.paramNotNull(presignedDownloadRequest, "presignedDownloadRequest");
+        
+        // Create S3 service level request
+        software.amazon.awssdk.services.s3.presignedurl.model.PresignedUrlDownloadRequest s3Request = 
+            software.amazon.awssdk.services.s3.presignedurl.model.PresignedUrlDownloadRequest.builder()
+                .presignedUrl(presignedDownloadRequest.presignedUrl())
+                .build();
+        
+        // Use existing TransferProgressUpdater pattern
+        TransferProgressUpdater progressUpdater = new TransferProgressUpdater(presignedDownloadRequest, null);
+        progressUpdater.transferInitiated();
+        
+        CompletableFuture<CompletedDownload<ResultT>> returnFuture = new CompletableFuture<>();
+        progressUpdater.registerCompletion(returnFuture);
+        
+        try {
+            // Call S3AsyncClient presigned extension
+            CompletableFuture<ResultT> future =
+                s3AsyncClient.presignedUrlExtension().getObject(s3Request, presignedDownloadRequest.responseTransformer());
+            
+            // Forward cancellation
+            CompletableFutureUtils.forwardExceptionTo(returnFuture, future);
+            
+            CompletableFutureUtils.forwardTransformedResultTo(future, returnFuture,
+                                                              r -> CompletedDownload.builder()
+                                                                                   .result(r)
+                                                                                   .build());
+        } catch (Throwable throwable) {
+            returnFuture.completeExceptionally(throwable);
+        }
+        
+        return new DefaultDownload<>(returnFuture, progressUpdater.progress());
     }
 
     @Override

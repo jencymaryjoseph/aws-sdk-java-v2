@@ -72,6 +72,8 @@ public class TransferManagerConfiguration implements SdkAutoCloseable {
                       .orElseGet(() -> options.get(UPLOAD_DIRECTORY_MAX_DEPTH));
     }
 
+
+
     @Override
     public void close() {
         options.close();

@@ -1,268 +1,252 @@
-// /*
-//  * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-//  *
-//  * Licensed under the Apache License, Version 2.0 (the "License").
-//  * You may not use this file except in compliance with the License.
-//  * A copy of the License is located at
-//  *
-//  *  http://aws.amazon.com/apache2.0
-//  *
-//  * or in the "license" file accompanying this file. This file is distributed
-//  * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
-//  * express or implied. See the License for the specific language governing
-//  * permissions and limitations under the License.
-//  */
-//
-// package software.amazon.awssdk.services.s3.internal.multipart;
-//
-// import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
-// import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
-// import static com.github.tomakehurst.wiremock.client.WireMock.get;
-// import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
-// import static com.github.tomakehurst.wiremock.client.WireMock.matching;
-// import static com.github.tomakehurst.wiremock.client.WireMock.stubFor;
-// import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
-// import static com.github.tomakehurst.wiremock.client.WireMock.verify;
-//
-// import java.util.Random;
-//
-// /**
-//  * Test utility for stubbing HTTP Range requests for presigned URL multipart downloads.
-//  * Unlike traditional multipart which uses partNumber parameters, this utility handles
-//  * Range header-based requests.
-//  */
-// public class PresignedUrlMultipartDownloadTestUtil {
-//
-//     private String testBucket;
-//     private String testKey;
-//     private String eTag;
-//     private Random random = new Random();
-//
-//     public PresignedUrlMultipartDownloadTestUtil(String testBucket, String testKey, String eTag) {
-//         this.testBucket = testBucket;
-//         this.testKey = testKey;
-//         this.eTag = eTag;
-//     }
-//
-//     /**
-//      * Stub all range parts for a multipart download test.
-//      *
-//      * @param bucket             S3 bucket name
-//      * @param key                S3 object key
-//      * @param objectSize         Total size of the object in S3
-//      * @param configuredPartSize Part size we configure for download
-//      * @param eTag               ETag to return in responses
-//      * @return Expected body content as byte array
-//      */
-//     public byte[] stubAllRangeParts(String bucket, String key, long objectSize, long configuredPartSize, String eTag) {
-//         byte[] expectedBody = new byte[(int) objectSize];
-//         int totalParts = (int) Math.ceil((double) objectSize / configuredPartSize);
-//
-//         for (int partIndex = 0; partIndex < totalParts; partIndex++) {
-//             long startByte = partIndex * configuredPartSize;
-//             long endByte = Math.min(startByte + configuredPartSize - 1, objectSize - 1);
-//             int actualPartSize = (int) (endByte - startByte + 1);
-//
-//             // Generate deterministic random data for this part
-//             byte[] partData = new byte[actualPartSize];
-//             Random partRandom = new Random(partIndex); // Deterministic seed
-//             partRandom.nextBytes(partData);
-//
-//             // Copy part data to expected body
-//             System.arraycopy(partData, 0, expectedBody, (int) startByte, actualPartSize);
-//
-//             // Stub the HTTP request
-//             String rangeHeader = String.format("bytes=%d-%d", startByte, endByte);
-//             String contentRangeHeader = String.format("bytes %d-%d/%d", startByte, endByte, objectSize);
-//
-//             stubFor(get(urlEqualTo(String.format("/%s/%s", bucket, key)))
-//                         .withHeader("Range", equalTo(rangeHeader))
-//                         .willReturn(aResponse()
-//                                         .withStatus(206) // Partial Content
-//                                         .withHeader("Content-Length", String.valueOf(actualPartSize))
-//                                         .withHeader("Content-Range", contentRangeHeader)
-//                                         .withHeader("ETag", eTag)
-//                                         .withHeader("Accept-Ranges", "bytes")
-//                                         .withBody(partData)));
-//         }
-//
-//         return expectedBody;
-//     }
-//
-//     /**
-//      * Stub a specific range part request.
-//      *
-//      * @param bucket     S3 bucket name
-//      * @param key        S3 object key
-//      * @param partIndex  Zero-based part index
-//      * @param totalParts Total number of parts
-//      * @param partSize   Size of each part in bytes
-//      * @param eTag       ETag to return in response
-//      * @return Part data as byte array
-//      */
-//     public byte[] stubForRangePart(String bucket, String key, int partIndex, int totalParts, int partSize, String eTag) {
-//         long totalSize = (long) totalParts * partSize;
-//         long startByte = (long) partIndex * partSize;
-//         long endByte = Math.min(startByte + partSize - 1, totalSize - 1);
-//         int actualPartSize = (int) (endByte - startByte + 1);
-//
-//         // Generate deterministic random data for this part
-//         byte[] partData = new byte[actualPartSize];
-//         Random partRandom = new Random(partIndex); // Deterministic seed
-//         partRandom.nextBytes(partData);
-//
-//         String rangeHeader = String.format("bytes=%d-%d", startByte, endByte);
-//         String contentRangeHeader = String.format("bytes %d-%d/%d", startByte, endByte, totalSize);
-//
-//         stubFor(get(urlEqualTo(String.format("/%s/%s", bucket, key)))
-//                     .withHeader("Range", equalTo(rangeHeader))
-//                     .willReturn(aResponse()
-//                                     .withStatus(206) // Partial Content
-//                                     .withHeader("Content-Length", String.valueOf(actualPartSize))
-//                                     .withHeader("Content-Range", contentRangeHeader)
-//                                     .withHeader("ETag", eTag)
-//                                     .withHeader("Accept-Ranges", "bytes")
-//                                     .withBody(partData)));
-//
-//         return partData;
-//     }
-//
-//     /**
-//      * Verify that the correct number of range requests were made.
-//      *
-//      * @param expectedParts Expected number of range requests
-//      */
-//     public void verifyCorrectAmountOfRangeRequestsMade(int expectedParts) {
-//         // For now, just verify that at least the expected number of requests were made
-//         // The exact range verification is complex due to dynamic part sizing
-//         for (int i = 0; i < expectedParts; i++) {
-//             verify(getRequestedFor(urlEqualTo(String.format("/%s/%s", testBucket, testKey)))
-//                        .withHeader("Range", matching("bytes=\\d+-\\d+")));
-//         }
-//     }
-//
-//     /**
-//      * Stub a range request that returns an error.
-//      *
-//      * @param bucket       S3 bucket name
-//      * @param key          S3 object key
-//      * @param rangeHeader  Range header value (e.g., "bytes=0-1023")
-//      * @param statusCode   HTTP status code to return
-//      * @param errorMessage Error message to include in response body
-//      */
-//     public void stubRangeRequestError(String bucket, String key, String rangeHeader, int statusCode, String errorMessage) {
-//         stubFor(get(urlEqualTo(String.format("/%s/%s", bucket, key)))
-//                     .withHeader("Range", equalTo(rangeHeader))
-//                     .willReturn(aResponse()
-//                                     .withStatus(statusCode)
-//                                     .withBody(String.format("<Error><Code>TestError</Code><Message>%s</Message></Error>", errorMessage))));
-//     }
-//
-//     /**
-//      * Stub a range request with missing Content-Range header (for testing error scenarios).
-//      *
-//      * @param bucket      S3 bucket name
-//      * @param key         S3 object key
-//      * @param rangeHeader Range header value
-//      * @param partSize    Size of the part data
-//      */
-//     public void stubRangeRequestWithoutContentRange(String bucket, String key, String rangeHeader, int partSize) {
-//         byte[] partData = new byte[partSize];
-//         random.nextBytes(partData);
-//
-//         stubFor(get(urlEqualTo(String.format("/%s/%s", bucket, key)))
-//                     .withHeader("Range", equalTo(rangeHeader))
-//                     .willReturn(aResponse()
-//                                     .withStatus(206)
-//                                     .withHeader("Content-Length", String.valueOf(partSize))
-//                                     .withHeader("ETag", eTag)
-//                                     // Missing Content-Range header
-//                                     .withBody(partData)));
-//     }
-//
-//     /**
-//      * Stub a range request with missing ETag header (for testing error scenarios).
-//      *
-//      * @param bucket      S3 bucket name
-//      * @param key         S3 object key
-//      * @param rangeHeader Range header value
-//      * @param partSize    Size of the part data
-//      * @param totalSize   Total object size
-//      */
-//     public void stubRangeRequestWithoutETag(String bucket, String key, String rangeHeader, int partSize, long totalSize) {
-//         byte[] partData = new byte[partSize];
-//         random.nextBytes(partData);
-//
-//         String contentRangeHeader = String.format("bytes 0-%d/%d", partSize - 1, totalSize);
-//
-//         stubFor(get(urlEqualTo(String.format("/%s/%s", bucket, key)))
-//                     .withHeader("Range", equalTo(rangeHeader))
-//                     .willReturn(aResponse()
-//                                     .withStatus(206)
-//                                     .withHeader("Content-Length", String.valueOf(partSize))
-//                                     .withHeader("Content-Range", contentRangeHeader)
-//                                     // Missing ETag header
-//                                     .withBody(partData)));
-//     }
-//
-//     /**
-//      * Stub a range request with malformed Content-Range header (for testing error scenarios).
-//      *
-//      * @param bucket                S3 bucket name
-//      * @param key                   S3 object key
-//      * @param rangeHeader           Range header value
-//      * @param partSize              Size of the part data
-//      * @param malformedContentRange Malformed Content-Range header value
-//      */
-//     public void stubRangeRequestWithMalformedContentRange(String bucket, String key, String rangeHeader,
-//                                                           int partSize, String malformedContentRange) {
-//         byte[] partData = new byte[partSize];
-//         random.nextBytes(partData);
-//
-//         stubFor(get(urlEqualTo(String.format("/%s/%s", bucket, key)))
-//                     .withHeader("Range", equalTo(rangeHeader))
-//                     .willReturn(aResponse()
-//                                     .withStatus(206)
-//                                     .withHeader("Content-Length", String.valueOf(partSize))
-//                                     .withHeader("Content-Range", malformedContentRange)
-//                                     .withHeader("ETag", eTag)
-//                                     .withBody(partData)));
-//     }
-//
-//     /**
-//      * Stub a specific range part request by index for object-based testing.
-//      *
-//      * @param bucket             S3 bucket name
-//      * @param key                S3 object key
-//      * @param partIndex          Zero-based part index
-//      * @param objectSize         Total object size
-//      * @param configuredPartSize Configured part size for download
-//      * @param eTag               ETag to return in response
-//      * @return Part data as byte array
-//      */
-//     public byte[] stubForRangePart(String bucket, String key, int partIndex, long objectSize, long configuredPartSize, String eTag) {
-//         long startByte = partIndex * configuredPartSize;
-//         long endByte = Math.min(startByte + configuredPartSize - 1, objectSize - 1);
-//         int actualPartSize = (int) (endByte - startByte + 1);
-//
-//         // Generate deterministic random data for this part
-//         byte[] partData = new byte[actualPartSize];
-//         Random partRandom = new Random(partIndex); // Deterministic seed
-//         partRandom.nextBytes(partData);
-//
-//         String rangeHeader = String.format("bytes=%d-%d", startByte, endByte);
-//         String contentRangeHeader = String.format("bytes %d-%d/%d", startByte, endByte, objectSize);
-//
-//         stubFor(get(urlEqualTo(String.format("/%s/%s", bucket, key)))
-//                     .withHeader("Range", equalTo(rangeHeader))
-//                     .willReturn(aResponse()
-//                                     .withStatus(206) // Partial Content
-//                                     .withHeader("Content-Length", String.valueOf(actualPartSize))
-//                                     .withHeader("Content-Range", contentRangeHeader)
-//                                     .withHeader("ETag", eTag)
-//                                     .withHeader("Accept-Ranges", "bytes")
-//                                     .withBody(partData)));
-//
-//         return partData;
-//     }
-// }
+/*
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License").
+ * You may not use this file except in compliance with the License.
+ * A copy of the License is located at
+ *
+ *  http://aws.amazon.com/apache2.0
+ *
+ * or in the "license" file accompanying this file. This file is distributed
+ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
+ * express or implied. See the License for the specific language governing
+ * permissions and limitations under the License.
+ */
+
+package software.amazon.awssdk.services.s3.internal.multipart;
+
+import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.get;
+import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.matching;
+import static com.github.tomakehurst.wiremock.client.WireMock.stubFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.verify;
+
+import com.github.tomakehurst.wiremock.matching.EqualToPattern;
+import java.util.Random;
+
+/**
+ * Test utility class for PresignedUrlMultipartDownloaderSubscriber WireMock tests.
+ * Provides methods to stub HTTP range requests and verify interactions.
+ */
+public class PresignedUrlMultipartDownloadTestUtil {
+
+    private static final String PRESIGNED_URL_PATH = "/presigned-url";
+    private static final String DIFFERENT_ETAG = "different-etag-12345";
+
+    private final String presignedUrl;
+    private final String eTag;
+    private final Random random = new Random();
+
+    public PresignedUrlMultipartDownloadTestUtil(String presignedUrl, String eTag) {
+        this.presignedUrl = presignedUrl;
+        this.eTag = eTag;
+    }
+
+    public String getPresignedUrl() {
+        return presignedUrl;
+    }
+
+    /**
+     * Stubs all range parts for a multipart download and returns the expected complete body.
+     * Based on the error logs, the subscriber appears to use double the configured part size.
+     * 
+     * @param amountOfPartsToTest number of parts to create
+     * @param partSize size of each part in bytes (configured part size)
+     * @return the complete expected body as byte array
+     */
+    public byte[] stubAllRangeParts(int amountOfPartsToTest, int partSize) {
+        // Use the configured part size directly
+        int actualPartSize = partSize;
+        byte[] expectedBody = new byte[amountOfPartsToTest * actualPartSize];
+        random.nextBytes(expectedBody);
+        
+        long totalSize = expectedBody.length;
+        
+        // Create stubs for each expected range request
+        for (int i = 0; i < amountOfPartsToTest; i++) {
+            long startByte = i * actualPartSize;
+            long endByte = Math.min(startByte + actualPartSize - 1, totalSize - 1);
+            
+            byte[] partBody = new byte[(int)(endByte - startByte + 1)];
+            System.arraycopy(expectedBody, (int)startByte, partBody, 0, partBody.length);
+            
+            String rangeHeader = "bytes=" + startByte + "-" + endByte;
+            String contentRange = "bytes " + startByte + "-" + endByte + "/" + totalSize;
+            
+            stubFor(get(urlEqualTo(PRESIGNED_URL_PATH))
+                .withHeader("Range", new EqualToPattern(rangeHeader))
+                .willReturn(aResponse()
+                    .withStatus(206)
+                    .withHeader("Content-Range", contentRange)
+                    .withHeader("Content-Length", String.valueOf(partBody.length))
+                    .withHeader("ETag", eTag)
+                    .withBody(partBody)));
+        }
+        
+        return expectedBody;
+    }
+
+    /**
+     * Stubs a single range part for downloads that fit in one part.
+     * 
+     * @param partSize size of the single part in bytes
+     * @return the expected body as byte array
+     */
+    public byte[] stubSingleRangePart(int partSize) {
+        // For single part, use the actual configured size
+        byte[] body = new byte[partSize];
+        random.nextBytes(body);
+        
+        String rangeHeader = "bytes=0-" + (partSize - 1);
+        String contentRange = "bytes 0-" + (partSize - 1) + "/" + partSize;
+        
+        stubFor(get(urlEqualTo(PRESIGNED_URL_PATH))
+            .withHeader("Range", new EqualToPattern(rangeHeader))
+            .willReturn(aResponse()
+                .withStatus(206)
+                .withHeader("Content-Range", contentRange)
+                .withHeader("Content-Length", String.valueOf(partSize))
+                .withHeader("ETag", eTag)
+                .withBody(body)));
+        
+        return body;
+    }
+
+    /**
+     * Stubs the first range part specifically for size discovery.
+     * 
+     * @param totalParts total number of parts in the object
+     * @param partSize size of each part in bytes
+     */
+    public void stubFirstRangePartForSizeDiscovery(int totalParts, int partSize) {
+        int actualPartSize = partSize;
+        byte[] body = new byte[actualPartSize];
+        random.nextBytes(body);
+        
+        long totalSize = totalParts * actualPartSize;
+        String rangeHeader = "bytes=0-" + (actualPartSize - 1);
+        String contentRange = "bytes 0-" + (actualPartSize - 1) + "/" + totalSize;
+        
+        stubFor(get(urlEqualTo(PRESIGNED_URL_PATH))
+            .withHeader("Range", new EqualToPattern(rangeHeader))
+            .atPriority(1)
+            .willReturn(aResponse()
+                .withStatus(206)
+                .withHeader("Content-Range", contentRange)
+                .withHeader("Content-Length", String.valueOf(actualPartSize))
+                .withHeader("ETag", eTag)
+                .withBody(body)));
+    }
+
+    /**
+     * Stubs the first range request to return an error.
+     */
+    public void stubFirstRangeRequestWithError() {
+        stubFor(get(urlEqualTo(PRESIGNED_URL_PATH))
+            .atPriority(1)
+            .willReturn(aResponse()
+                .withStatus(400)
+                .withBody("<Error><Code>400</Code><Message>test error message</Message></Error>")));
+    }
+
+    /**
+     * Stubs the second range request to return an error.
+     */
+    public void stubSecondRangeRequestWithError() {
+        stubFor(get(urlEqualTo(PRESIGNED_URL_PATH))
+            .withHeader("Range", matching("bytes=(?!0-).*"))
+            .atPriority(2)
+            .willReturn(aResponse()
+                .withStatus(400)
+                .withBody("<Error><Code>400</Code><Message>test error message</Message></Error>")));
+    }
+    /**
+     * Stubs the second range request to return an error for a specific part size.
+     */
+    public void stubSecondRangeRequestWithError(int partSize) {
+        long startByte = partSize;
+        long endByte = startByte + partSize - 1;
+        String rangeHeader = "bytes=" + startByte + "-" + endByte;
+        
+        stubFor(get(urlEqualTo(PRESIGNED_URL_PATH))
+            .withHeader("Range", new EqualToPattern(rangeHeader))
+            .atPriority(2)
+            .willReturn(aResponse()
+                .withStatus(400)
+                .withBody("<e><Code>400</Code><Message>test error message</Message></e>")));
+    }
+    /**
+     * Stubs the first range request without Content-Range header.
+     */
+    public void stubFirstRangeRequestWithoutContentRange(int partSize) {
+        int actualPartSize = partSize;
+        byte[] body = new byte[actualPartSize];
+        random.nextBytes(body);
+        
+        String rangeHeader = "bytes=0-" + (actualPartSize - 1);
+        
+        stubFor(get(urlEqualTo(PRESIGNED_URL_PATH))
+            .withHeader("Range", new EqualToPattern(rangeHeader))
+            .atPriority(1)
+            .willReturn(aResponse()
+                .withStatus(206)
+                .withHeader("Content-Length", String.valueOf(actualPartSize))
+                .withHeader("ETag", eTag)
+                .withBody(body)));
+    }
+
+    /**
+     * Stubs the first range request without ETag header.
+     */
+    public void stubFirstRangeRequestWithoutETag(int totalParts, int partSize) {
+        int actualPartSize = partSize;
+        byte[] body = new byte[actualPartSize];
+        random.nextBytes(body);
+        
+        long totalSize = totalParts * actualPartSize;
+        String rangeHeader = "bytes=0-" + (actualPartSize - 1);
+        String contentRange = "bytes 0-" + (actualPartSize - 1) + "/" + totalSize;
+        
+        stubFor(get(urlEqualTo(PRESIGNED_URL_PATH))
+            .withHeader("Range", new EqualToPattern(rangeHeader))
+            .atPriority(1)
+            .willReturn(aResponse()
+                .withStatus(206)
+                .withHeader("Content-Range", contentRange)
+                .withHeader("Content-Length", String.valueOf(actualPartSize))
+                .withBody(body)));
+    }
+
+    /**
+     * Stubs the second range part with a different ETag.
+     */
+    public void stubSecondRangePartWithDifferentETag(int partSize) {
+        int actualPartSize = partSize;
+        byte[] body = new byte[actualPartSize];
+        random.nextBytes(body);
+        
+        long startByte = actualPartSize;
+        long endByte = startByte + actualPartSize - 1;
+        String rangeHeader = "bytes=" + startByte + "-" + endByte;
+        String contentRange = "bytes " + startByte + "-" + endByte + "/*";
+        
+        stubFor(get(urlEqualTo(PRESIGNED_URL_PATH))
+            .withHeader("Range", new EqualToPattern(rangeHeader))
+            .atPriority(2)
+            .willReturn(aResponse()
+                .withStatus(206)
+                .withHeader("Content-Range", contentRange)
+                .withHeader("Content-Length", String.valueOf(actualPartSize))
+                .withHeader("ETag", DIFFERENT_ETAG)
+                .withBody(body)));
+    }
+
+    /**
+     * Verifies that the correct number of range requests were made to the presigned URL.
+     */
+    public void verifyCorrectAmountOfRangeRequestsMade(int expectedRequestCount) {
+        verify(expectedRequestCount, getRequestedFor(urlEqualTo(PRESIGNED_URL_PATH)));
+    }
+}
