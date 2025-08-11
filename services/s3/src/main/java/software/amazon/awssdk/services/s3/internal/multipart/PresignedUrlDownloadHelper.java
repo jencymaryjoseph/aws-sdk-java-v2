@@ -15,12 +15,14 @@
 
 package software.amazon.awssdk.services.s3.internal.multipart;
 
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import software.amazon.awssdk.annotations.SdkInternalApi;
 import software.amazon.awssdk.core.SplittingTransformerConfiguration;
 import software.amazon.awssdk.core.async.AsyncResponseTransformer;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
+import software.amazon.awssdk.services.s3.internal.presignedurl.model.PresignedUrlDownloadRequestWrapper;
 import software.amazon.awssdk.services.s3.presignedurl.AsyncPresignedUrlExtension;
 import software.amazon.awssdk.services.s3.presignedurl.model.PresignedUrlDownloadRequest;
 import software.amazon.awssdk.utils.Logger;
@@ -46,7 +48,7 @@ public class PresignedUrlDownloadHelper {
     }
 
     public <T> CompletableFuture<T> downloadObject(
-        PresignedUrlDownloadRequest presignedRequest,
+        PresignedUrlDownloadRequestWrapper presignedRequest,
         AsyncResponseTransformer<GetObjectResponse, T> asyncResponseTransformer) {
 
         Validate.paramNotNull(presignedRequest, "presignedRequest");
@@ -55,7 +57,11 @@ public class PresignedUrlDownloadHelper {
         if (presignedRequest.range() != null) {
             log.debug(() -> "Using single part download because presigned URL request range is included in the request. range = "
                             + presignedRequest.range());
-            return asyncPresignedUrlExtension.getObject(presignedRequest, asyncResponseTransformer);
+            PresignedUrlDownloadRequest publicRequest = PresignedUrlDownloadRequest.builder()
+                    .presignedUrl(presignedRequest.url())
+                    .range(presignedRequest.range())
+                    .build();
+            return asyncPresignedUrlExtension.getObject(publicRequest, asyncResponseTransformer);
         }
 
         SplittingTransformerConfiguration splittingConfig = SplittingTransformerConfiguration.builder()
@@ -64,14 +70,27 @@ public class PresignedUrlDownloadHelper {
         AsyncResponseTransformer.SplitResult<GetObjectResponse, T> split =
             asyncResponseTransformer.split(splittingConfig);
 
-        PresignedUrlMultipartDownloaderSubscriber subscriber =
-            new PresignedUrlMultipartDownloaderSubscriber(
-                s3AsyncClient,
-                presignedRequest,
-                configuredPartSizeInBytes);
+        PresignedUrlMultipartDownloaderSubscriber subscriber = subscriber(presignedRequest);
 
         split.publisher().subscribe(subscriber);
         return split.resultFuture();
 
+    }
+
+    private PresignedUrlMultipartDownloaderSubscriber subscriber(PresignedUrlDownloadRequestWrapper presignedRequest) {
+        Optional<MultipartDownloadResumeContext> multipartDownloadContext =
+            MultipartDownloadUtils.multipartDownloadResumeContext(presignedRequest);
+        
+        PresignedUrlDownloadRequest publicRequest = PresignedUrlDownloadRequest.builder()
+                .presignedUrl(presignedRequest.url())
+                .range(presignedRequest.range())
+                .build();
+
+        return multipartDownloadContext
+            .map(ctx -> new PresignedUrlMultipartDownloaderSubscriber(
+                s3AsyncClient, publicRequest, configuredPartSizeInBytes,
+                ctx.highestSequentialCompletedPart()))
+            .orElseGet(() -> new PresignedUrlMultipartDownloaderSubscriber(
+                s3AsyncClient, publicRequest, configuredPartSizeInBytes));
     }
 }

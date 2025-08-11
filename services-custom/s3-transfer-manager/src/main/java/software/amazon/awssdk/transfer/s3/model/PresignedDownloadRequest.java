@@ -15,14 +15,12 @@
 
 package software.amazon.awssdk.transfer.s3.model;
 
-import java.net.URL;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import software.amazon.awssdk.annotations.SdkPublicApi;
 import software.amazon.awssdk.core.async.AsyncResponseTransformer;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
+import software.amazon.awssdk.services.s3.presignedurl.model.PresignedUrlDownloadRequest;
 import software.amazon.awssdk.transfer.s3.progress.TransferListener;
 import software.amazon.awssdk.utils.builder.CopyableBuilder;
 import software.amazon.awssdk.utils.builder.ToCopyableBuilder;
@@ -31,31 +29,26 @@ import software.amazon.awssdk.utils.builder.ToCopyableBuilder;
 public final class PresignedDownloadRequest<T> 
         implements TransferObjectRequest, ToCopyableBuilder<PresignedDownloadRequest.Builder<T>, PresignedDownloadRequest<T>> {
     
-    private final URL presignedUrl;
+    private final PresignedUrlDownloadRequest presignedUrlDownloadRequest;
     private final AsyncResponseTransformer<GetObjectResponse, T> responseTransformer;
-    private final Map<String, String> additionalHeaders;
     private final List<TransferListener> transferListeners;
 
     private PresignedDownloadRequest(Builder<T> builder) {
-        this.presignedUrl = builder.presignedUrl;
+        this.presignedUrlDownloadRequest = builder.presignedUrlDownloadRequest;
         this.responseTransformer = builder.responseTransformer;
-        this.additionalHeaders = builder.additionalHeaders != null ? 
-            new HashMap<>(builder.additionalHeaders) : new HashMap<>();
         this.transferListeners = builder.transferListeners != null ? 
             new ArrayList<>(builder.transferListeners) : new ArrayList<>();
     }
 
-    public URL presignedUrl() {
-        return presignedUrl;
+    public PresignedUrlDownloadRequest presignedUrlDownloadRequest() {
+        return presignedUrlDownloadRequest;
     }
 
     public AsyncResponseTransformer<GetObjectResponse, T> responseTransformer() {
         return responseTransformer;
     }
 
-    public Map<String, String> additionalHeaders() {
-        return additionalHeaders;
-    }
+
 
     public List<TransferListener> transferListeners() {
         return transferListeners;
@@ -71,25 +64,22 @@ public final class PresignedDownloadRequest<T>
     }
 
     public static final class Builder<T> implements CopyableBuilder<Builder<T>, PresignedDownloadRequest<T>> {
-        private URL presignedUrl;
+        private PresignedUrlDownloadRequest presignedUrlDownloadRequest;
         private AsyncResponseTransformer<GetObjectResponse, T> responseTransformer;
-        private Map<String, String> additionalHeaders;
         private List<TransferListener> transferListeners;
 
         private Builder() {
         }
 
         private Builder(PresignedDownloadRequest<T> request) {
-            this.presignedUrl = request.presignedUrl;
+            this.presignedUrlDownloadRequest = request.presignedUrlDownloadRequest;
             this.responseTransformer = request.responseTransformer;
-            this.additionalHeaders = request.additionalHeaders != null ? 
-                new HashMap<>(request.additionalHeaders) : null;
             this.transferListeners = request.transferListeners != null ? 
                 new ArrayList<>(request.transferListeners) : null;
         }
 
-        public Builder<T> presignedUrl(URL presignedUrl) {
-            this.presignedUrl = presignedUrl;
+        public Builder<T> presignedUrlDownloadRequest(PresignedUrlDownloadRequest presignedUrlDownloadRequest) {
+            this.presignedUrlDownloadRequest = presignedUrlDownloadRequest;
             return this;
         }
 
@@ -98,10 +88,7 @@ public final class PresignedDownloadRequest<T>
             return this;
         }
 
-        public Builder<T> additionalHeaders(Map<String, String> additionalHeaders) {
-            this.additionalHeaders = additionalHeaders != null ? new HashMap<>(additionalHeaders) : null;
-            return this;
-        }
+
 
         public Builder<T> addTransferListener(TransferListener transferListener) {
             if (this.transferListeners == null) {

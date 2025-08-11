@@ -57,6 +57,7 @@ import software.amazon.awssdk.transfer.s3.model.DownloadRequest;
 import software.amazon.awssdk.transfer.s3.model.FileDownload;
 import software.amazon.awssdk.transfer.s3.model.PresignedDownloadFileRequest;
 import software.amazon.awssdk.transfer.s3.model.ResumablePresignedDownload;
+import software.amazon.awssdk.transfer.s3.model.ResumableFileDownload;
 import software.amazon.awssdk.transfer.s3.progress.LoggingTransferListener;
 
 public class BasicTransferManagerWorkflowTest {
@@ -74,9 +75,9 @@ public class BasicTransferManagerWorkflowTest {
         s3Client = S3Client.builder().region(TEST_REGION).build();
         s3AsyncClient = S3AsyncClient.builder().region(TEST_REGION).build();
 
-        // Create Transfer Manager with MultipartS3AsyncClient
+        // Create Transfer Manager with MultipartS3AsyncClient - use smaller part size for testing
         MultipartConfiguration config = MultipartConfiguration.builder()
-                                                              .minimumPartSizeInBytes(8 * 1024 * 1024L) // 8MB
+                                                              .minimumPartSizeInBytes(5 * 1024 * 1024L) // 5MB for better multipart testing
                                                               .build();
         S3AsyncClient multipartClient = MultipartS3AsyncClient.create(s3AsyncClient, config, true);
 
@@ -495,6 +496,121 @@ public class BasicTransferManagerWorkflowTest {
         }
     }
 
+
+    @Test
+    void testTransferManagerPauseResume() throws Exception {
+        System.out.println("\n=== Transfer Manager Pause/Resume Test (Multipart) ===");
+        
+        // Use larger file to ensure multipart download (must be > 8MB minimum part size)
+        int fileSize = 25 * 1024 * 1024; // 25MB - ensures multipart with 8MB parts
+        byte[] testData = createTestData(fileSize);
+        
+        // Upload using multipart to ensure it's stored as multipart object
+        uploadMultipartObject(testData, 8 * 1024 * 1024); // 8MB upload parts
+        
+        Path downloadPath = Files.createTempFile("pause-resume-multipart-test", ".dat");
+        
+        try {
+            System.out.println("Starting multipart download of " + (fileSize / 1024 / 1024) + "MB file...");
+            
+            // Start download - ensure no range is specified to force multipart
+            DownloadFileRequest downloadRequest = DownloadFileRequest.builder()
+                    .getObjectRequest(r -> r.bucket(TEST_BUCKET).key(testKey)) // No range specified
+                    .destination(downloadPath)
+                    .addTransferListener(LoggingTransferListener.create())
+                    .build();
+            
+            FileDownload download = transferManager.downloadFile(downloadRequest);
+            
+            // Wait longer to ensure multipart download starts
+            Thread.sleep(2000);
+            
+            // Pause the download
+            ResumableFileDownload resumableDownload = download.pause();
+            System.out.println("Download paused. Bytes transferred: " + resumableDownload.bytesTransferred());
+            
+            // Verify we have partial progress (indicating multipart was working)
+            assertThat(resumableDownload.bytesTransferred()).isGreaterThan(0L);
+            assertThat(resumableDownload.bytesTransferred()).isLessThan((long) fileSize);
+            
+            // Resume the download
+            FileDownload resumedDownload = transferManager.resumeDownloadFile(resumableDownload);
+            CompletedFileDownload completed = resumedDownload.completionFuture().join();
+            
+            // Verify download completed successfully
+            assertThat(Files.exists(downloadPath)).isTrue();
+            assertThat(Files.size(downloadPath)).isEqualTo(testData.length);
+            assertThat(Files.readAllBytes(downloadPath)).isEqualTo(testData);
+            
+            System.out.println("✅ Transfer Manager multipart pause/resume completed successfully");
+            System.out.println("   Final file size: " + Files.size(downloadPath) + " bytes");
+            
+        } finally {
+            Files.deleteIfExists(downloadPath);
+            // Cleanup S3 object
+            s3Client.deleteObject(builder -> builder.bucket(TEST_BUCKET).key(testKey));
+        }
+    }
+
+    @Test
+    void testResumeFileDownloadSerialization() throws Exception {
+        System.out.println("\n=== Resume File Download Serialization Test (Multipart) ===");
+        
+        // Use larger file to ensure multipart download
+        int fileSize = 30 * 1024 * 1024; // 30MB
+        byte[] testData = createTestData(fileSize);
+        
+        // Upload using multipart
+        uploadMultipartObject(testData, 10 * 1024 * 1024); // 10MB upload parts
+        
+        Path downloadPath = Files.createTempFile("serialize-multipart-test", ".dat");
+        Path resumeTokenPath = Files.createTempFile("resume-token", ".json");
+        
+        try {
+            System.out.println("Starting multipart download for serialization test...");
+            
+            // Start download
+            DownloadFileRequest downloadRequest = DownloadFileRequest.builder()
+                    .getObjectRequest(r -> r.bucket(TEST_BUCKET).key(testKey))
+                    .destination(downloadPath)
+                    .addTransferListener(LoggingTransferListener.create())
+                    .build();
+            
+            FileDownload download = transferManager.downloadFile(downloadRequest);
+            
+            // Wait for partial download
+            Thread.sleep(1500);
+            
+            // Pause and serialize
+            ResumableFileDownload resumableDownload = download.pause();
+            resumableDownload.serializeToFile(resumeTokenPath);
+            
+            System.out.println("Resume token serialized to: " + resumeTokenPath);
+            System.out.println("Bytes transferred before pause: " + resumableDownload.bytesTransferred());
+            
+            // Verify we have partial progress
+            assertThat(resumableDownload.bytesTransferred()).isGreaterThan(0L);
+            assertThat(resumableDownload.bytesTransferred()).isLessThan((long) fileSize);
+            
+            // Deserialize and resume
+            ResumableFileDownload deserializedToken = ResumableFileDownload.fromFile(resumeTokenPath);
+            FileDownload resumedDownload = transferManager.resumeDownloadFile(deserializedToken);
+            CompletedFileDownload completed = resumedDownload.completionFuture().join();
+            
+            // Verify
+            assertThat(Files.exists(downloadPath)).isTrue();
+            assertThat(Files.size(downloadPath)).isEqualTo(testData.length);
+            assertThat(Files.readAllBytes(downloadPath)).isEqualTo(testData);
+            
+            System.out.println("✅ Resume file download serialization test passed");
+            System.out.println("   Final file size: " + Files.size(downloadPath) + " bytes");
+            
+        } finally {
+            Files.deleteIfExists(downloadPath);
+            Files.deleteIfExists(resumeTokenPath);
+            s3Client.deleteObject(builder -> builder.bucket(TEST_BUCKET).key(testKey));
+        }
+    }
 
     private byte[] createTestData(int size) {
         byte[] data = new byte[size];

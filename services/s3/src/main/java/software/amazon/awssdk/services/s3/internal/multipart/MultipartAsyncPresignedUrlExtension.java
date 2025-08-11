@@ -19,6 +19,7 @@ import java.util.concurrent.CompletableFuture;
 import software.amazon.awssdk.annotations.SdkInternalApi;
 import software.amazon.awssdk.core.async.AsyncResponseTransformer;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
+import software.amazon.awssdk.services.s3.internal.presignedurl.model.PresignedUrlDownloadRequestWrapper;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.presignedurl.AsyncPresignedUrlExtension;
 import software.amazon.awssdk.services.s3.presignedurl.model.PresignedUrlDownloadRequest;
@@ -52,6 +53,12 @@ public class MultipartAsyncPresignedUrlExtension implements AsyncPresignedUrlExt
             AsyncResponseTransformer<GetObjectResponse, ReturnT> asyncResponseTransformer) {
         Validate.paramNotNull(presignedUrlDownloadRequest, "presignedUrlDownloadRequest");
         Validate.paramNotNull(asyncResponseTransformer, "asyncResponseTransformer");
-        return downloadHelper.downloadObject(presignedUrlDownloadRequest, asyncResponseTransformer);
+        
+        PresignedUrlDownloadRequestWrapper wrapper = PresignedUrlDownloadRequestWrapper.builder()
+                .url(presignedUrlDownloadRequest.presignedUrl())
+                .range(presignedUrlDownloadRequest.range())
+                .build();
+        
+        return downloadHelper.downloadObject(wrapper, asyncResponseTransformer);
     }
 }

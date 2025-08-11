@@ -21,7 +21,6 @@ import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequest;
 
-
 public class test {
     public static void main(String[] args) throws MalformedURLException {
         // 1. generate pre signed URL
@@ -37,7 +36,7 @@ public class test {
                 .build();
         PresignedGetObjectRequest presignedRequest = presigner.presignGetObject(presignRequest);
         URL presignedUrl = presignedRequest.url();
-        final long PART_SIZE = 10L * 1024 * 1024; // 10MB
+        final long PART_SIZE = 8L * 1024 * 1024; // 10MB
 
         // 2. client with multipart enabled
         // S3AsyncClient s3AsyncClient =

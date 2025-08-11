@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Optional;
 import software.amazon.awssdk.annotations.SdkInternalApi;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.S3Request;
 
 @SdkInternalApi
 public final class MultipartDownloadUtils {
@@ -53,6 +54,20 @@ public final class MultipartDownloadUtils {
      * @return the MultipartDownloadResumeContext if one is found, otherwise an empty Optional.
      */
     public static Optional<MultipartDownloadResumeContext> multipartDownloadResumeContext(GetObjectRequest request) {
+        return request
+            .overrideConfiguration()
+            .flatMap(conf -> Optional.ofNullable(conf.executionAttributes().getAttribute(MULTIPART_DOWNLOAD_RESUME_CONTEXT)));
+    }
+
+    /**
+     * This method checks the
+     * {@link software.amazon.awssdk.services.s3.multipart.S3MultipartExecutionAttribute#MULTIPART_DOWNLOAD_RESUME_CONTEXT}
+     * execution attributes for a context object and returns it if it finds one. Otherwise, returns an empty Optional.
+     *
+     * @param request the request to look for execution attributes
+     * @return the MultipartDownloadResumeContext if one is found, otherwise an empty Optional.
+     */
+    public static Optional<MultipartDownloadResumeContext> multipartDownloadResumeContext(S3Request request) {
         return request
             .overrideConfiguration()
             .flatMap(conf -> Optional.ofNullable(conf.executionAttributes().getAttribute(MULTIPART_DOWNLOAD_RESUME_CONTEXT)));

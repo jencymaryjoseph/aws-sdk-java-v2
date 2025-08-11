@@ -46,24 +46,20 @@ public class PresignedUrlMultipartDownloaderSubscriberTckTest
     @Override
     public Subscriber<AsyncResponseTransformer<GetObjectResponse, GetObjectResponse>>
     createSubscriber(WhiteboxSubscriberProbe<AsyncResponseTransformer<GetObjectResponse, GetObjectResponse>> probe) {
-        
-        // Mock the presigned URL extension
         AsyncPresignedUrlExtension presignedUrlExtension = Mockito.mock(AsyncPresignedUrlExtension.class);
         when(s3mock.presignedUrlExtension()).thenReturn(presignedUrlExtension);
-        
-        // Mock first part response (size discovery)
+
         CompletableFuture<GetObjectResponse> firstPartResponse = CompletableFuture.completedFuture(
             GetObjectResponse.builder()
-                .contentRange("bytes 0-8388607/33554432") // 32MB total, 8MB first part
+                .contentRange("bytes 0-8388607/33554432")
                 .contentLength(8388608L) // 8MB
                 .eTag("\"test-etag-12345\"")
                 .build()
         );
-        
-        // Mock subsequent part responses
+
         CompletableFuture<GetObjectResponse> subsequentPartResponse = CompletableFuture.completedFuture(
             GetObjectResponse.builder()
-                .contentRange("bytes 8388608-16777215/33554432") // Second part
+                .contentRange("bytes 8388608-16777215/33554432")
                 .contentLength(8388608L) // 8MB
                 .eTag("\"test-etag-12345\"")
                 .build()
@@ -78,7 +74,7 @@ public class PresignedUrlMultipartDownloaderSubscriberTckTest
         return new PresignedUrlMultipartDownloaderSubscriber(
             s3mock,
             createTestPresignedUrlRequest(),
-            8 * 1024 * 1024L // 8MB part size
+            8 * 1024 * 1024L
         ) {
             @Override
             public void onError(Throwable throwable) {
@@ -147,7 +143,6 @@ public class PresignedUrlMultipartDownloaderSubscriberTckTest
 
         @Override
         public void onStream(SdkPublisher<ByteBuffer> publisher) {
-            // do nothing, test
         }
 
         @Override
