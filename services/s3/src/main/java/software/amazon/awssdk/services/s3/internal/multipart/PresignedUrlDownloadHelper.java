@@ -58,9 +58,9 @@ public class PresignedUrlDownloadHelper {
             log.debug(() -> "Using single part download because presigned URL request range is included in the request. range = "
                             + presignedRequest.range());
             PresignedUrlDownloadRequest publicRequest = PresignedUrlDownloadRequest.builder()
-                    .presignedUrl(presignedRequest.url())
-                    .range(presignedRequest.range())
-                    .build();
+                                                                                   .presignedUrl(presignedRequest.url())
+                                                                                   .range(presignedRequest.range())
+                                                                                   .build();
             return asyncPresignedUrlExtension.getObject(publicRequest, asyncResponseTransformer);
         }
 
@@ -78,19 +78,21 @@ public class PresignedUrlDownloadHelper {
     }
 
     private PresignedUrlMultipartDownloaderSubscriber subscriber(PresignedUrlDownloadRequestWrapper presignedRequest) {
-        Optional<MultipartDownloadResumeContext> multipartDownloadContext =
-            MultipartDownloadUtils.multipartDownloadResumeContext(presignedRequest);
-        
+        // TODO: Resume functionality - implement resume context support
+        // Optional<MultipartDownloadResumeContext> multipartDownloadContext =
+        //     MultipartDownloadUtils.multipartDownloadResumeContext(presignedRequest);
         PresignedUrlDownloadRequest publicRequest = PresignedUrlDownloadRequest.builder()
-                .presignedUrl(presignedRequest.url())
-                .range(presignedRequest.range())
-                .build();
-
-        return multipartDownloadContext
-            .map(ctx -> new PresignedUrlMultipartDownloaderSubscriber(
-                s3AsyncClient, publicRequest, configuredPartSizeInBytes,
-                ctx.highestSequentialCompletedPart()))
-            .orElseGet(() -> new PresignedUrlMultipartDownloaderSubscriber(
-                s3AsyncClient, publicRequest, configuredPartSizeInBytes));
+                                                                               .presignedUrl(presignedRequest.url())
+                                                                               .range(presignedRequest.range())
+                                                                               .build();
+        // TODO: Resume functionality - use resume context when available
+        // return multipartDownloadContext
+        //     .map(ctx -> new PresignedUrlMultipartDownloaderSubscriber(
+        //         s3AsyncClient, publicRequest, configuredPartSizeInBytes,
+        //         ctx.highestSequentialCompletedPart()))
+        //     .orElseGet(() -> new PresignedUrlMultipartDownloaderSubscriber(
+        //         s3AsyncClient, publicRequest, configuredPartSizeInBytes));
+        return new PresignedUrlMultipartDownloaderSubscriber(
+            s3AsyncClient, publicRequest, configuredPartSizeInBytes);
     }
 }

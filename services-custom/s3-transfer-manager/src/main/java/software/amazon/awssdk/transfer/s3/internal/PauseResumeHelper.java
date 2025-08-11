@@ -91,21 +91,22 @@ public class PauseResumeHelper {
         return hasResumeToken;
     }
 
-    /**
-     * Check if a file has been modified since the given timestamp
-     */
-    protected boolean fileModified(Path filePath, Instant recordedLastModified) {
-        try {
-            java.io.File file = filePath.toFile();
-            if (!file.exists()) {
-                return true; // File doesn't exist, consider it modified
-            }
-            
-            Instant currentLastModified = Instant.ofEpochMilli(file.lastModified());
-            return !currentLastModified.equals(recordedLastModified);
-        } catch (Exception e) {
-            log.debug(() -> "Error checking file modification time: " + e.getMessage());
-            return true; // If we can't check, assume it's modified for safety
-        }
-    }
+    // TODO: Resume functionality - implement file modification checking for pause/resume
+    // /**
+    //  * Check if a file has been modified since the given timestamp
+    //  */
+    // protected boolean fileModified(Path filePath, Instant recordedLastModified) {
+    //     try {
+    //         java.io.File file = filePath.toFile();
+    //         if (!file.exists()) {
+    //             return true; // File doesn't exist, consider it modified
+    //         }
+    //         
+    //         Instant currentLastModified = Instant.ofEpochMilli(file.lastModified());
+    //         return !currentLastModified.equals(recordedLastModified);
+    //     } catch (Exception e) {
+    //         log.debug(() -> "Error checking file modification time: " + e.getMessage());
+    //         return true; // If we can't check, assume it's modified for safety
+    //     }
+    // }
 }

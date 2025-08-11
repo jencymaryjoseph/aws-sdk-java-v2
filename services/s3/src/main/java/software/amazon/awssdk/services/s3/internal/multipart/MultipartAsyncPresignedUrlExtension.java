@@ -53,12 +53,12 @@ public class MultipartAsyncPresignedUrlExtension implements AsyncPresignedUrlExt
             AsyncResponseTransformer<GetObjectResponse, ReturnT> asyncResponseTransformer) {
         Validate.paramNotNull(presignedUrlDownloadRequest, "presignedUrlDownloadRequest");
         Validate.paramNotNull(asyncResponseTransformer, "asyncResponseTransformer");
-        
+
         PresignedUrlDownloadRequestWrapper wrapper = PresignedUrlDownloadRequestWrapper.builder()
                 .url(presignedUrlDownloadRequest.presignedUrl())
                 .range(presignedUrlDownloadRequest.range())
                 .build();
-        
+
         return downloadHelper.downloadObject(wrapper, asyncResponseTransformer);
     }
 }

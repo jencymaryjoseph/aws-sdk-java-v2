@@ -139,35 +139,6 @@ public class PresignedUrlMultipartDownloadTestUtil {
                 .withBody("<e><Code>400</Code><Message>test error message</Message></e>")));
     }
 
-    public void stubFirstRangeRequestWithoutContentRange(int partSize) {
-        byte[] body = new byte[partSize];
-        random.nextBytes(body);
-        
-        // Catch-all stub for ANY GET request - Response WITHOUT Content-Range header
-        stubFor(get(urlMatching(".*"))
-            .willReturn(aResponse()
-                .withStatus(206)
-                .withHeader("Content-Length", String.valueOf(partSize))
-                .withHeader("ETag", eTag)
-                .withBody(body)));
-    }
-
-    public void stubFirstRangeRequestWithoutETag(int totalParts, int partSize) {
-        byte[] body = new byte[partSize];
-        random.nextBytes(body);
-        
-        long totalSize = totalParts * partSize;
-        String contentRange = "bytes 0-" + (partSize - 1) + "/" + totalSize;
-
-        stubFor(get(urlMatching(".*"))
-            .willReturn(aResponse()
-                .withStatus(206)
-                .withHeader("Content-Range", contentRange)
-                .withHeader("Content-Length", String.valueOf(partSize))
-                .withBody(body)));
-    }
-
-
     public void verifyCorrectAmountOfRangeRequestsMade(int expectedRequestCount) {
         verify(expectedRequestCount, getRequestedFor(urlEqualTo(PRESIGNED_URL_PATH)));
     }

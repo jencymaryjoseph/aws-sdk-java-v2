@@ -18,7 +18,7 @@ package software.amazon.awssdk.services.s3.internal.multipart;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
-import static org.junit.jupiter.params.provider.Arguments.arguments;
+
 import static software.amazon.awssdk.services.s3.internal.multipart.MultipartDownloadTestUtil.transformersSuppliers;
 
 import com.github.tomakehurst.wiremock.junit5.WireMockRuntimeInfo;
@@ -34,6 +34,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+
+import static org.junit.jupiter.params.provider.Arguments.arguments;
 import org.reactivestreams.Subscriber;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
@@ -74,7 +76,7 @@ class PresignedUrlMultipartDownloaderSubscriberWiremockTest {
         );
     }
 
-    @ParameterizedTest
+    @ParameterizedTest(name = "multipart download: {1} parts of {2} bytes each")
     @MethodSource("argumentsProvider")
     <T> void onNext_withMultipleParts_shouldReceiveAllBodyPartsInCorrectOrder(
         AsyncResponseTransformerTestSupplier<T> supplier,
@@ -105,7 +107,7 @@ class PresignedUrlMultipartDownloaderSubscriberWiremockTest {
         util.verifyCorrectAmountOfRangeRequestsMade(amountOfPartsToTest);
     }
 
-    @ParameterizedTest
+    @ParameterizedTest(name = "single part download: {1} bytes")
     @MethodSource("singlePartArgumentsProvider")
     <T> void onNext_withSinglePart_shouldReceiveCompleteBody(
         AsyncResponseTransformerTestSupplier<T> supplier,
@@ -219,12 +221,12 @@ class PresignedUrlMultipartDownloaderSubscriberWiremockTest {
         List<AsyncResponseTransformerTestSupplier<?>> transformers = transformersSuppliers();
         
         return Stream.of(
-            arguments(transformers.get(0), 2, 1024),      // Small parts
-            arguments(transformers.get(0), 4, 16 * 1024),  // Medium parts
-            arguments(transformers.get(0), 7, 1024 * 1024), // Large parts
-            arguments(transformers.get(1), 3, 8192),       // Different transformer
-            arguments(transformers.get(0), 10, 512),       // Many small parts
-            arguments(transformers.get(0), 1, 4 * 1024 * 1024) // Single large part
+            arguments(transformers.get(0), 2, 1024),
+            arguments(transformers.get(0), 4, 16 * 1024),
+            arguments(transformers.get(0), 7, 1024 * 1024),
+            arguments(transformers.get(1), 3, 8192),
+            arguments(transformers.get(0), 10, 512),
+            arguments(transformers.get(0), 1, 4 * 1024 * 1024)
         );
     }
 
@@ -232,10 +234,9 @@ class PresignedUrlMultipartDownloaderSubscriberWiremockTest {
         List<AsyncResponseTransformerTestSupplier<?>> transformers = transformersSuppliers();
         
         return Stream.of(
-            // Essential single part scenarios
-            arguments(transformers.get(0), 1024),          // Small single part
-            arguments(transformers.get(0), 1024 * 1024),   // Large single part
-            arguments(transformers.get(1), 16 * 1024)      // Different transformer
+            arguments(transformers.get(0), 1024),
+            arguments(transformers.get(0), 1024 * 1024),
+            arguments(transformers.get(1), 16 * 1024)
         );
     }
 

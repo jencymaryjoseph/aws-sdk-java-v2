@@ -63,7 +63,6 @@ public class PresignedUrlMultipartDownloaderSubscriber
     private final Object lock = new Object();
     private volatile MultipartDownloadState state;
     private Subscription subscription;
-    private final MultipartDownloadResumeContext resumeContext;
 
     private static class MultipartDownloadState {
         final long totalContentLength;
@@ -85,36 +84,12 @@ public class PresignedUrlMultipartDownloaderSubscriber
         S3AsyncClient s3AsyncClient,
         PresignedUrlDownloadRequest presignedUrlDownloadRequest,
         long configuredPartSizeInBytes) {
-        this(s3AsyncClient, presignedUrlDownloadRequest, configuredPartSizeInBytes, 0);
-    }
-
-    public PresignedUrlMultipartDownloaderSubscriber(
-        S3AsyncClient s3AsyncClient,
-        PresignedUrlDownloadRequest presignedUrlDownloadRequest,
-        long configuredPartSizeInBytes,
-        int completedParts) {
         this.s3AsyncClient = s3AsyncClient;
         this.presignedUrlDownloadRequest = presignedUrlDownloadRequest;
         this.configuredPartSizeInBytes = configuredPartSizeInBytes;
-        this.completedParts = completedParts;
+        this.completedParts = 0;
         this.future = new CompletableFuture<>();
-        this.resumeContext = null;
     }
-
-    public PresignedUrlMultipartDownloaderSubscriber(
-        S3AsyncClient s3AsyncClient,
-        PresignedUrlDownloadRequest presignedUrlDownloadRequest,
-        long configuredPartSizeInBytes,
-        MultipartDownloadResumeContext resumeContext) {
-        this.s3AsyncClient = s3AsyncClient;
-        this.presignedUrlDownloadRequest = presignedUrlDownloadRequest;
-        this.configuredPartSizeInBytes = configuredPartSizeInBytes;
-        this.completedParts = resumeContext != null ? resumeContext.highestSequentialCompletedPart() : 0;
-        this.future = new CompletableFuture<>();
-        this.resumeContext = resumeContext;
-    }
-
-
 
     @Override
     public void onSubscribe(Subscription s) {
@@ -134,157 +109,125 @@ public class PresignedUrlMultipartDownloaderSubscriber
             subscription.cancel();
             throw new NullPointerException("onNext must not be called with null asyncResponseTransformer");
         }
-
-        if (state == null) {
-            performSizeDiscoveryAndFirstPart(asyncResponseTransformer);
-        } else {
-            downloadNextPart(asyncResponseTransformer);
+        synchronized (lock) {
+            if (state == null) {
+                performSizeDiscoveryAndFirstPart(asyncResponseTransformer);
+            } else {
+                downloadNextPart(asyncResponseTransformer);
+            }
         }
     }
 
     private void performSizeDiscoveryAndFirstPart(AsyncResponseTransformer<GetObjectResponse,
         GetObjectResponse> asyncResponseTransformer) {
-        // If resuming, skip the first part if it's already completed
         if (completedParts > 0) {
             performSizeDiscoveryOnly(asyncResponseTransformer);
             return;
         }
-        
         long endByte = configuredPartSizeInBytes - 1;
         String firstPartRange = String.format("%s0-%d", BYTES_RANGE_PREFIX, endByte);
-
         PresignedUrlDownloadRequest firstPartRequest = presignedUrlDownloadRequest.toBuilder()
                                                                                   .range(firstPartRange)
                                                                                   .build();
-
         s3AsyncClient.presignedUrlExtension().getObject(firstPartRequest, asyncResponseTransformer)
-          .whenComplete((response, error) -> {
-              if (error != null) {
-                  log.debug(() -> "Error encountered during first part request");
-                  onError(error);
-                  return;
-              }
-
-              try {
-                  String contentRange = response.contentRange();
-                  if (contentRange == null) {
-                      onError(new IllegalStateException("No Content-Range header in response"));
-                      return;
-                  }
-
-                  long totalSize = parseContentRangeForTotalSize(contentRange);
-
-                  if (totalSize <= configuredPartSizeInBytes) {
-                      subscription.cancel();
-                      return;
-                  }
-
-                  String etag = response.eTag();
-                  if (etag == null) {
-                      onError(new IllegalStateException("No ETag in response, cannot ensure consistency"));
-                      return;
-                  }
-
-                  initializeStateAfterFirstPart(totalSize, etag);
-                  updateResumeContextWithTotalParts(state.totalParts);
-                  updateResumeContext(response, 1);
-
-                  if (state.totalParts > 1) {
-                      subscription.request(1);
-                  } else {
-                      subscription.cancel();
-                  }
-
-              } catch (Exception e) {
-                  log.debug(() -> "Error during first part processing", e);
-                  onError(e);
-              }
-          });
+                     .whenComplete((response, error) -> {
+                         if (error != null) {
+                             log.debug(() -> "Error encountered during first part request");
+                             onError(error);
+                             return;
+                         }
+                         try {
+                             String contentRange = response.contentRange();
+                             if (contentRange == null) {
+                                 onError(new IllegalStateException("No Content-Range header in response"));
+                                 return;
+                             }
+                             long totalSize = parseContentRangeForTotalSize(contentRange);
+                             if (totalSize <= configuredPartSizeInBytes) {
+                                 subscription.cancel();
+                                 return;
+                             }
+                             String etag = response.eTag();
+                             initializeStateAfterFirstPart(totalSize, etag);
+                             if (state.totalParts > 1) {
+                                 subscription.request(1);
+                             } else {
+                                 subscription.cancel();
+                             }
+                         } catch (Exception e) {
+                             log.debug(() -> "Error during first part processing", e);
+                             onError(e);
+                         }
+                     });
     }
-    
+
     private void performSizeDiscoveryOnly(AsyncResponseTransformer<GetObjectResponse, GetObjectResponse> asyncResponseTransformer) {
-        // For resume, we need to discover the total size without downloading the first part
         String sizeDiscoveryRange = String.format("%s0-0", BYTES_RANGE_PREFIX);
-        
         PresignedUrlDownloadRequest sizeDiscoveryRequest = presignedUrlDownloadRequest.toBuilder()
                                                                                       .range(sizeDiscoveryRange)
                                                                                       .build();
-        
+
         s3AsyncClient.presignedUrlExtension().getObject(sizeDiscoveryRequest, asyncResponseTransformer)
-          .whenComplete((response, error) -> {
-              if (error != null) {
-                  log.debug(() -> "Error encountered during size discovery request");
-                  onError(error);
-                  return;
-              }
-              
-              try {
-                  String contentRange = response.contentRange();
-                  if (contentRange == null) {
-                      onError(new IllegalStateException("No Content-Range header in response"));
-                      return;
-                  }
-                  
-                  long totalSize = parseContentRangeForTotalSize(contentRange);
-                  String etag = response.eTag();
-                  
-                  if (etag == null) {
-                      onError(new IllegalStateException("No ETag in response, cannot ensure consistency"));
-                      return;
-                  }
-                  
-                  int totalParts = calculateTotalParts(totalSize, configuredPartSizeInBytes);
-                  this.state = new MultipartDownloadState(totalSize, configuredPartSizeInBytes, totalParts, etag, completedParts);
-                  
-                  updateResumeContextWithTotalParts(state.totalParts);
-                  
-                  if (completedParts < state.totalParts) {
-                      subscription.request(1);
-                  } else {
-                      subscription.cancel();
-                  }
-                  
-              } catch (Exception e) {
-                  log.debug(() -> "Error during size discovery processing", e);
-                  onError(e);
-              }
-          });
+                     .whenComplete((response, error) -> {
+                         if (error != null) {
+                             log.debug(() -> "Error encountered during size discovery request");
+                             onError(error);
+                             return;
+                         }
+                         try {
+                             String contentRange = response.contentRange();
+                             if (contentRange == null) {
+                                 onError(new IllegalStateException("No Content-Range header in response"));
+                                 return;
+                             }
+                             long totalSize = parseContentRangeForTotalSize(contentRange);
+                             String etag = response.eTag();
+                             if (etag == null) {
+                                 onError(new IllegalStateException("No ETag in response, cannot ensure consistency"));
+                                 return;
+                             }
+                             int totalParts = calculateTotalParts(totalSize, configuredPartSizeInBytes);
+                             this.state = new MultipartDownloadState(totalSize, configuredPartSizeInBytes, totalParts, etag, completedParts);
+                             if (completedParts < state.totalParts) {
+                                 subscription.request(1);
+                             } else {
+                                 subscription.cancel();
+                             }
+                         } catch (Exception e) {
+                             log.debug(() -> "Error during size discovery processing", e);
+                             onError(e);
+                         }
+                     });
     }
 
     private void downloadNextPart(AsyncResponseTransformer<GetObjectResponse, GetObjectResponse> transformer) {
-        int nextPartIndex = state.completedParts.get();
-
+        int nextPartIndex = state.completedParts.getAndIncrement();
         if (nextPartIndex >= state.totalParts) {
             subscription.cancel();
             return;
         }
-
         PresignedUrlDownloadRequest partRequest = createPartRequest(nextPartIndex);
         String expectedRange = partRequest.range();
-
         s3AsyncClient.presignedUrlExtension().getObject(partRequest, transformer)
-          .whenComplete((response, error) -> {
-              if (error != null) {
-                  log.debug(() -> "Error encountered during part request with range=" + expectedRange);
-                  onError(error);
-              } else {
-                  try {
-                      validatePartResponse(response, nextPartIndex, expectedRange);
-
-                      int completedCount = state.completedParts.incrementAndGet();
-                      updateResumeContext(response, completedCount);
-                      
-                      if (completedCount < state.totalParts) {
-                          subscription.request(1);
-                      } else {
-                          subscription.cancel();
-                      }
-                  } catch (Exception validationError) {
-                      log.debug(() -> "Validation failed for part " + (nextPartIndex + 1));
-                      onError(validationError);
-                  }
-              }
-          });
+                     .whenComplete((response, error) -> {
+                         if (error != null) {
+                             log.debug(() -> "Error encountered during part request with range=" + expectedRange);
+                             onError(error);
+                         } else {
+                             try {
+                                 validatePartResponse(response, nextPartIndex, expectedRange);
+                                 int completedCount = nextPartIndex + 1;
+                                 if (completedCount < state.totalParts) {
+                                     subscription.request(1);
+                                 } else {
+                                     subscription.cancel();
+                                 }
+                             } catch (Exception validationError) {
+                                 log.debug(() -> "Validation failed for part " + (nextPartIndex + 1));
+                                 onError(validationError);
+                             }
+                         }
+                     });
     }
 
     private void initializeStateAfterFirstPart(long totalSize, String etag) {
@@ -307,8 +250,8 @@ public class PresignedUrlMultipartDownloaderSubscriber
     private PresignedUrlDownloadRequest createPartRequest(int partIndex) {
         long startByte = partIndex * state.actualPartSizeInBytes;
         long endByte = Math.min(startByte + state.actualPartSizeInBytes - 1, state.totalContentLength - 1);
-        String rangeHeader = String.format("%s%d-%d", BYTES_RANGE_PREFIX, startByte, endByte);
-        
+        String rangeHeader = BYTES_RANGE_PREFIX + startByte + "-" + endByte;
+
         return presignedUrlDownloadRequest.toBuilder()
                                           .range(rangeHeader)
                                           .build();
@@ -330,25 +273,12 @@ public class PresignedUrlMultipartDownloaderSubscriber
     }
 
     private void validatePartResponse(GetObjectResponse response, int partIndex, String expectedRange) {
+        if (response == null) {
+            throw new IllegalArgumentException("Response cannot be null");
+        }
         String responseETag = response.eTag();
         if (responseETag != null && state.etag != null && !state.etag.equals(responseETag)) {
             throw new IllegalStateException("ETag mismatch - object may have changed during download");
-        }
-    }
-
-    private void updateResumeContext(GetObjectResponse response, int completedPart) {
-        if (resumeContext != null) {
-            resumeContext.addCompletedPart(completedPart);
-            resumeContext.addToBytesToLastCompletedParts(response.contentLength());
-            if (resumeContext.response() == null) {
-                resumeContext.response(response);
-            }
-        }
-    }
-
-    private void updateResumeContextWithTotalParts(int totalParts) {
-        if (resumeContext != null) {
-            resumeContext.totalParts(totalParts);
         }
     }
 }
