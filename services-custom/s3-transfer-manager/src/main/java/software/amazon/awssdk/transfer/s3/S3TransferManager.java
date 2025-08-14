@@ -41,6 +41,8 @@ import software.amazon.awssdk.transfer.s3.model.DownloadFileRequest;
 import software.amazon.awssdk.transfer.s3.model.DownloadRequest;
 import software.amazon.awssdk.transfer.s3.model.FileDownload;
 import software.amazon.awssdk.transfer.s3.model.FileUpload;
+import software.amazon.awssdk.transfer.s3.model.PresignedDownloadFileRequest;
+import software.amazon.awssdk.transfer.s3.model.PresignedDownloadRequest;
 import software.amazon.awssdk.transfer.s3.model.ResumableFileDownload;
 import software.amazon.awssdk.transfer.s3.model.ResumableFileUpload;
 import software.amazon.awssdk.transfer.s3.model.Upload;
@@ -183,6 +185,65 @@ import software.amazon.awssdk.utils.Validate;
 public interface S3TransferManager extends SdkAutoCloseable {
 
     /**
+     * Downloads an object using a presigned URL to a local file. Supports multipart downloads and pause/resume functionality.
+     * <p>
+     * Users can monitor the progress of the transfer by attaching a {@link TransferListener}. The provided
+     * {@link LoggingTransferListener} logs a basic progress bar; users can also implement their own listeners.
+     * <p>
+     * <b>Usage Example:</b>
+     * {@snippet :
+     *         S3TransferManager transferManager = S3TransferManager.create();
+     *
+     *         PresignedDownloadFileRequest request = PresignedDownloadFileRequest.builder()
+     *                                                                           .presignedUrlDownloadRequest(PresignedUrlDownloadRequest.builder()
+     *                                                                               .presignedUrl(presignedUrl)
+     *                                                                               .build())
+     *                                                                           .destination(Paths.get("myFile.txt"))
+     *                                                                           .addTransferListener(LoggingTransferListener.create())
+     *                                                                           .build();
+     *
+     *         FileDownload download = transferManager.downloadFile(request);
+     *         download.completionFuture().join();
+     * }
+     *
+     * @param presignedDownloadFileRequest the presigned download file request
+     * @return A {@link FileDownload} that can be used to track the ongoing transfer
+     */
+    default FileDownload downloadFile(PresignedDownloadFileRequest presignedDownloadFileRequest) {
+        throw new UnsupportedOperationException();
+    }
+
+    /**
+     * Downloads an object using a presigned URL through a custom response transformer.
+     * <p>
+     * Users can monitor the progress of the transfer by attaching a {@link TransferListener}. The provided
+     * {@link LoggingTransferListener} logs a basic progress bar; users can also implement their own listeners.
+     * <p>
+     * <b>Usage Example:</b>
+     * {@snippet :
+     *         S3TransferManager transferManager = S3TransferManager.create();
+     *
+     *         PresignedDownloadRequest<ResponseBytes<GetObjectResponse>> request = PresignedDownloadRequest.builder()
+     *                                                                                                     .presignedUrlDownloadRequest(PresignedUrlDownloadRequest.builder()
+     *                                                                                                         .presignedUrl(presignedUrl)
+     *                                                                                                         .build())
+     *                                                                                                     .responseTransformer(AsyncResponseTransformer.toBytes())
+     *                                                                                                     .addTransferListener(LoggingTransferListener.create())
+     *                                                                                                     .build();
+     *
+     *         Download<ResponseBytes<GetObjectResponse>> download = transferManager.download(request);
+     *         download.completionFuture().join();
+     * }
+     *
+     * @param presignedDownloadRequest the presigned download request
+     * @param <ResultT> The type of data the {@link AsyncResponseTransformer} produces
+     * @return A {@link Download} that can be used to track the ongoing transfer
+     */
+    default <ResultT> Download<ResultT> download(PresignedDownloadRequest<ResultT> presignedDownloadRequest) {
+        throw new UnsupportedOperationException();
+    }
+
+    /**
      * Downloads an object identified by the bucket and key from S3 to a local file. For non-file-based downloads, you may use
      * {@link #download(DownloadRequest)} instead.
      * <p>
@@ -270,9 +331,10 @@ public interface S3TransferManager extends SdkAutoCloseable {
      *         resumedDownload.completionFuture().join();
      * }
      *
-     * @param resumableFileDownload the download to resume.
+     * @param resumableFileDownload the download to resume (supports both regular and presigned URL downloads)
      * @return A new {@code FileDownload} object to use to check the state of the download.
      * @see #downloadFile(DownloadFileRequest)
+     * @see #downloadFile(PresignedDownloadFileRequest)
      * @see FileDownload#pause()
      */
     default FileDownload resumeDownloadFile(ResumableFileDownload resumableFileDownload) {
@@ -291,7 +353,8 @@ public interface S3TransferManager extends SdkAutoCloseable {
 
     /**
      * Downloads an object identified by the bucket and key from S3 through the given {@link AsyncResponseTransformer}. For
-     * downloading to a file, you may use {@link #downloadFile(DownloadFileRequest)} instead.
+     * downloading to a file, you may use {@link #downloadFile(DownloadFileRequest)} instead. For presigned URL downloads,
+     * you may use {@link #download(PresignedDownloadRequest)} instead.
      * <p>
      * Users can monitor the progress of the transfer by attaching a {@link TransferListener}. The provided
      * {@link LoggingTransferListener} logs a basic progress bar; users can also implement their own listeners.

@@ -60,6 +60,7 @@ public final class ResumableFileDownload implements ResumableTransfer,
                                                     ToCopyableBuilder<ResumableFileDownload.Builder, ResumableFileDownload> {
 
     private final DownloadFileRequest downloadFileRequest;
+    private final PresignedDownloadFileRequest presignedDownloadFileRequest;
     private final long bytesTransferred;
     private final Instant s3ObjectLastModified;
     private final String s3ObjectEtag;
@@ -68,7 +69,14 @@ public final class ResumableFileDownload implements ResumableTransfer,
     private final List<Integer> completedParts;
 
     private ResumableFileDownload(DefaultBuilder builder) {
-        this.downloadFileRequest = Validate.paramNotNull(builder.downloadFileRequest, "downloadFileRequest");
+        this.downloadFileRequest = builder.downloadFileRequest;
+        this.presignedDownloadFileRequest = builder.presignedDownloadFileRequest;
+        
+        // Exactly one request type must be provided
+        if ((downloadFileRequest == null) == (presignedDownloadFileRequest == null)) {
+            throw new IllegalArgumentException("Exactly one of downloadFileRequest or presignedDownloadFileRequest must be provided");
+        }
+        
         this.bytesTransferred = builder.bytesTransferred == null ? 0 : Validate.isNotNegative(builder.bytesTransferred,
                                                                                               "bytesTransferred");
         this.s3ObjectLastModified = builder.s3ObjectLastModified;
@@ -93,7 +101,10 @@ public final class ResumableFileDownload implements ResumableTransfer,
         if (bytesTransferred != that.bytesTransferred) {
             return false;
         }
-        if (!downloadFileRequest.equals(that.downloadFileRequest)) {
+        if (!Objects.equals(downloadFileRequest, that.downloadFileRequest)) {
+            return false;
+        }
+        if (!Objects.equals(presignedDownloadFileRequest, that.presignedDownloadFileRequest)) {
             return false;
         }
         if (!Objects.equals(s3ObjectLastModified, that.s3ObjectLastModified)) {
@@ -113,7 +124,8 @@ public final class ResumableFileDownload implements ResumableTransfer,
 
     @Override
     public int hashCode() {
-        int result = downloadFileRequest.hashCode();
+        int result = Objects.hashCode(downloadFileRequest);
+        result = 31 * result + Objects.hashCode(presignedDownloadFileRequest);
         result = 31 * result + (int) (bytesTransferred ^ (bytesTransferred >>> 32));
         result = 31 * result + (s3ObjectLastModified != null ? s3ObjectLastModified.hashCode() : 0);
         result = 31 * result + (s3ObjectEtag != null ? s3ObjectEtag.hashCode() : 0);
@@ -128,10 +140,24 @@ public final class ResumableFileDownload implements ResumableTransfer,
     }
 
     /**
-     * @return the {@link DownloadFileRequest} to resume
+     * @return the {@link DownloadFileRequest} to resume, or null for presigned URL downloads
      */
     public DownloadFileRequest downloadFileRequest() {
         return downloadFileRequest;
+    }
+
+    /**
+     * @return the {@link PresignedDownloadFileRequest} to resume, or null for regular downloads
+     */
+    public PresignedDownloadFileRequest presignedDownloadFileRequest() {
+        return presignedDownloadFileRequest;
+    }
+
+    /**
+     * @return true if this is a presigned URL download
+     */
+    public boolean isPresignedUrlDownload() {
+        return presignedDownloadFileRequest != null;
     }
 
     /**
@@ -190,6 +216,7 @@ public final class ResumableFileDownload implements ResumableTransfer,
                        .add("s3ObjectEtag", s3ObjectEtag)
                        .add("totalSizeInBytes", totalSizeInBytes)
                        .add("downloadFileRequest", downloadFileRequest)
+                       .add("presignedDownloadFileRequest", presignedDownloadFileRequest)
                        .add("completedParts", completedParts)
                        .build();
     }
@@ -303,6 +330,14 @@ public final class ResumableFileDownload implements ResumableTransfer,
         Builder downloadFileRequest(DownloadFileRequest downloadFileRequest);
 
         /**
+         * Sets the presigned download file request
+         *
+         * @param presignedDownloadFileRequest the presigned download file request
+         * @return a reference to this object so that method calls can be chained together.
+         */
+        Builder presignedDownloadFileRequest(PresignedDownloadFileRequest presignedDownloadFileRequest);
+
+        /**
          * The {@link DownloadFileRequest} request
          *
          * <p>
@@ -373,6 +408,7 @@ public final class ResumableFileDownload implements ResumableTransfer,
     private static final class DefaultBuilder implements Builder {
 
         private DownloadFileRequest downloadFileRequest;
+        private PresignedDownloadFileRequest presignedDownloadFileRequest;
         private Long bytesTransferred;
         private Instant s3ObjectLastModified;
         private String s3ObjectEtag;
@@ -385,6 +421,7 @@ public final class ResumableFileDownload implements ResumableTransfer,
 
         private DefaultBuilder(ResumableFileDownload persistableFileDownload) {
             this.downloadFileRequest = persistableFileDownload.downloadFileRequest;
+            this.presignedDownloadFileRequest = persistableFileDownload.presignedDownloadFileRequest;
             this.bytesTransferred = persistableFileDownload.bytesTransferred;
             this.totalSizeInBytes = persistableFileDownload.totalSizeInBytes;
             this.fileLastModified = persistableFileDownload.fileLastModified;
@@ -396,6 +433,11 @@ public final class ResumableFileDownload implements ResumableTransfer,
         @Override
         public Builder downloadFileRequest(DownloadFileRequest downloadFileRequest) {
             this.downloadFileRequest = downloadFileRequest;
+            return this;
+        }
+
+        public Builder presignedDownloadFileRequest(PresignedDownloadFileRequest presignedDownloadFileRequest) {
+            this.presignedDownloadFileRequest = presignedDownloadFileRequest;
             return this;
         }
 
