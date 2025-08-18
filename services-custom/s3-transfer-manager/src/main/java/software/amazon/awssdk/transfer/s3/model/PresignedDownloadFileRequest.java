@@ -47,8 +47,6 @@ public final class PresignedDownloadFileRequest
         return destination;
     }
 
-
-
     public List<TransferListener> transferListeners() {
         return transferListeners;
     }

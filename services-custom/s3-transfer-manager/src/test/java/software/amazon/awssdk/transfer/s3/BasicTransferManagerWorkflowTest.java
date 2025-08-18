@@ -274,7 +274,9 @@ public class BasicTransferManagerWorkflowTest {
         try {
             // Create presigned download request with LoggingTransferListener
             PresignedDownloadFileRequest downloadRequest = PresignedDownloadFileRequest.builder()
-                                                                                       .presignedUrl(presignedUrl)
+                                                                                       .presignedUrlDownloadRequest(software.amazon.awssdk.services.s3.presignedurl.model.PresignedUrlDownloadRequest.builder()
+                                                                                                                                                                                                      .presignedUrl(presignedUrl)
+                                                                                                                                                                                                      .build())
                                                                                        .destination(tempFile)
                                                                                        .addTransferListener(LoggingTransferListener.create())
                                                                                        .build();
@@ -353,7 +355,9 @@ public class BasicTransferManagerWorkflowTest {
         try {
             // Start presigned download
             PresignedDownloadFileRequest downloadRequest = PresignedDownloadFileRequest.builder()
-                .presignedUrl(presignedRequest.url())
+                .presignedUrlDownloadRequest(software.amazon.awssdk.services.s3.presignedurl.model.PresignedUrlDownloadRequest.builder()
+                                                                                                                               .presignedUrl(presignedRequest.url())
+                                                                                                                               .build())
                 .destination(downloadPath)
                 .addTransferListener(LoggingTransferListener.create())
                 .build();
@@ -414,7 +418,9 @@ public class BasicTransferManagerWorkflowTest {
         
         try {
             PresignedDownloadFileRequest downloadRequest = PresignedDownloadFileRequest.builder()
-                                                                                       .presignedUrl(presignedUrl)
+                                                                                       .presignedUrlDownloadRequest(software.amazon.awssdk.services.s3.presignedurl.model.PresignedUrlDownloadRequest.builder()
+                                                                                                                                                                                                      .presignedUrl(presignedUrl)
+                                                                                                                                                                                                      .build())
                                                                                        .destination(tempFile)
                                                                                        .build();
 
@@ -455,7 +461,9 @@ public class BasicTransferManagerWorkflowTest {
             // Create a mock presigned URL (doesn't need to be real for this test)
             URL mockUrl = new URL("https://example.com/expired-url");
             PresignedDownloadFileRequest downloadRequest = PresignedDownloadFileRequest.builder()
-                                                                                       .presignedUrl(mockUrl)
+                                                                                       .presignedUrlDownloadRequest(software.amazon.awssdk.services.s3.presignedurl.model.PresignedUrlDownloadRequest.builder()
+                                                                                                                                                                                                      .presignedUrl(mockUrl)
+                                                                                                                                                                                                      .build())
                                                                                        .destination(tempFile)
                                                                                        .build();
 

@@ -59,16 +59,23 @@ import software.amazon.awssdk.utils.builder.ToCopyableBuilder;
 public final class ResumableFileDownload implements ResumableTransfer,
                                                     ToCopyableBuilder<ResumableFileDownload.Builder, ResumableFileDownload> {
 
-    private final DownloadFileRequest downloadFileRequest;
+    private final DownloadFileRequest downloadFileRequest;                   // For regular downloads
+    private final PresignedDownloadFileRequest presignedDownloadFileRequest; // For presigned URL downloads
     private final long bytesTransferred;
-    private final Instant s3ObjectLastModified;
+    private final Instant s3ObjectLastModified;  // null for PresignedDownloadFileRequest
     private final String s3ObjectEtag;
     private final Long totalSizeInBytes;
     private final Instant fileLastModified;
     private final List<Integer> completedParts;
 
     private ResumableFileDownload(DefaultBuilder builder) {
-        this.downloadFileRequest = Validate.paramNotNull(builder.downloadFileRequest, "downloadFileRequest");
+        // Exactly one request type must be provided
+        if ((builder.downloadFileRequest == null) == (builder.presignedDownloadFileRequest == null)) {
+            throw new IllegalArgumentException("Exactly one of downloadFileRequest or presignedDownloadFileRequest must be provided");
+        }
+
+        this.downloadFileRequest = builder.downloadFileRequest;
+        this.presignedDownloadFileRequest = builder.presignedDownloadFileRequest;
         this.bytesTransferred = builder.bytesTransferred == null ? 0 : Validate.isNotNegative(builder.bytesTransferred,
                                                                                               "bytesTransferred");
         this.s3ObjectLastModified = builder.s3ObjectLastModified;
@@ -128,10 +135,24 @@ public final class ResumableFileDownload implements ResumableTransfer,
     }
 
     /**
-     * @return the {@link DownloadFileRequest} to resume
+     * @return true if this is a presigned URL download
+     */
+    public boolean isPresignedUrlDownload() {
+        return presignedDownloadFileRequest != null;
+    }
+
+    /**
+     * @return the {@link DownloadFileRequest} to resume, or null for presigned downloads
      */
     public DownloadFileRequest downloadFileRequest() {
         return downloadFileRequest;
+    }
+
+    /**
+     * @return the {@link PresignedDownloadFileRequest} to resume, or null for regular downloads
+     */
+    public PresignedDownloadFileRequest presignedDownloadFileRequest() {
+        return presignedDownloadFileRequest;
     }
 
     /**
@@ -303,6 +324,14 @@ public final class ResumableFileDownload implements ResumableTransfer,
         Builder downloadFileRequest(DownloadFileRequest downloadFileRequest);
 
         /**
+         * Sets the presigned download file request
+         *
+         * @param presignedDownloadFileRequest the presigned download file request
+         * @return a reference to this object so that method calls can be chained together.
+         */
+        Builder presignedDownloadFileRequest(PresignedDownloadFileRequest presignedDownloadFileRequest);
+
+        /**
          * The {@link DownloadFileRequest} request
          *
          * <p>
@@ -373,6 +402,7 @@ public final class ResumableFileDownload implements ResumableTransfer,
     private static final class DefaultBuilder implements Builder {
 
         private DownloadFileRequest downloadFileRequest;
+        private PresignedDownloadFileRequest presignedDownloadFileRequest;
         private Long bytesTransferred;
         private Instant s3ObjectLastModified;
         private String s3ObjectEtag;
@@ -385,6 +415,7 @@ public final class ResumableFileDownload implements ResumableTransfer,
 
         private DefaultBuilder(ResumableFileDownload persistableFileDownload) {
             this.downloadFileRequest = persistableFileDownload.downloadFileRequest;
+            this.presignedDownloadFileRequest = persistableFileDownload.presignedDownloadFileRequest;
             this.bytesTransferred = persistableFileDownload.bytesTransferred;
             this.totalSizeInBytes = persistableFileDownload.totalSizeInBytes;
             this.fileLastModified = persistableFileDownload.fileLastModified;
@@ -396,6 +427,12 @@ public final class ResumableFileDownload implements ResumableTransfer,
         @Override
         public Builder downloadFileRequest(DownloadFileRequest downloadFileRequest) {
             this.downloadFileRequest = downloadFileRequest;
+            return this;
+        }
+
+        @Override
+        public Builder presignedDownloadFileRequest(PresignedDownloadFileRequest presignedDownloadFileRequest) {
+            this.presignedDownloadFileRequest = presignedDownloadFileRequest;
             return this;
         }
 

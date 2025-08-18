@@ -48,8 +48,6 @@ public final class PresignedDownloadRequest<T>
         return responseTransformer;
     }
 
-
-
     public List<TransferListener> transferListeners() {
         return transferListeners;
     }
@@ -87,8 +85,6 @@ public final class PresignedDownloadRequest<T>
             this.responseTransformer = responseTransformer;
             return this;
         }
-
-
 
         public Builder<T> addTransferListener(TransferListener transferListener) {
             if (this.transferListeners == null) {

@@ -576,9 +576,7 @@ class GenericS3TransferManager implements S3TransferManager {
         
         // Create S3 service level request
         software.amazon.awssdk.services.s3.presignedurl.model.PresignedUrlDownloadRequest s3Request = 
-            software.amazon.awssdk.services.s3.presignedurl.model.PresignedUrlDownloadRequest.builder()
-                .presignedUrl(presignedDownloadFileRequest.presignedUrl())
-                .build();
+            presignedDownloadFileRequest.presignedUrlDownloadRequest();
         
         // Use existing TransferProgressUpdater pattern
         TransferProgressUpdater progressUpdater = new TransferProgressUpdater(presignedDownloadFileRequest, null);
@@ -625,9 +623,7 @@ class GenericS3TransferManager implements S3TransferManager {
         
         // Create S3 service level request
         software.amazon.awssdk.services.s3.presignedurl.model.PresignedUrlDownloadRequest s3Request = 
-            software.amazon.awssdk.services.s3.presignedurl.model.PresignedUrlDownloadRequest.builder()
-                .presignedUrl(presignedDownloadRequest.presignedUrl())
-                .build();
+            presignedDownloadRequest.presignedUrlDownloadRequest();
         
         // Use existing TransferProgressUpdater pattern
         TransferProgressUpdater progressUpdater = new TransferProgressUpdater(presignedDownloadRequest, null);
