@@ -39,6 +39,8 @@ import software.amazon.awssdk.transfer.s3.model.Download;
 import software.amazon.awssdk.transfer.s3.model.DownloadDirectoryRequest;
 import software.amazon.awssdk.transfer.s3.model.DownloadFileRequest;
 import software.amazon.awssdk.transfer.s3.model.DownloadRequest;
+import software.amazon.awssdk.transfer.s3.model.PresignedDownloadFileRequest;
+import software.amazon.awssdk.transfer.s3.model.PresignedDownloadRequest;
 import software.amazon.awssdk.transfer.s3.model.FileDownload;
 import software.amazon.awssdk.transfer.s3.model.FileUpload;
 import software.amazon.awssdk.transfer.s3.model.ResumableFileDownload;
@@ -694,6 +696,40 @@ public interface S3TransferManager extends SdkAutoCloseable {
      */
     default Copy copy(Consumer<CopyRequest.Builder> copyRequestBuilder) {
         return copy(CopyRequest.builder().applyMutation(copyRequestBuilder).build());
+    }
+
+    /**
+     * Downloads an object using a pre-signed URL to a local file. For non-file-based downloads, you may use
+     * {@link #downloadWithPresignedUrl(PresignedDownloadRequest)} instead.
+     *
+     * @param presignedDownloadFileRequest the presigned download file request
+     * @return A {@link FileDownload} that can be used to track the ongoing transfer
+     * @see #downloadFileWithPresignedUrl(Consumer)
+     */
+    default FileDownload downloadFileWithPresignedUrl(PresignedDownloadFileRequest presignedDownloadFileRequest) {
+        throw new UnsupportedOperationException();
+    }
+
+    /**
+     * This is a convenience method that creates an instance of the {@link PresignedDownloadFileRequest} builder, avoiding the need to
+     * create one manually via {@link PresignedDownloadFileRequest#builder()}.
+     *
+     * @see #downloadFileWithPresignedUrl(PresignedDownloadFileRequest)
+     */
+    default FileDownload downloadFileWithPresignedUrl(Consumer<PresignedDownloadFileRequest.Builder> presignedDownloadFileRequest) {
+        return downloadFileWithPresignedUrl(PresignedDownloadFileRequest.builder().applyMutation(presignedDownloadFileRequest).build());
+    }
+
+    /**
+     * Downloads an object using a pre-signed URL through the given {@link AsyncResponseTransformer}. For
+     * downloading to a file, you may use {@link #downloadFileWithPresignedUrl(PresignedDownloadFileRequest)} instead.
+     *
+     * @param presignedDownloadRequest the presigned download request
+     * @param <ResultT> The type of data the {@link AsyncResponseTransformer} produces
+     * @return A {@link Download} that can be used to track the ongoing transfer
+     */
+    default <ResultT> Download<ResultT> downloadWithPresignedUrl(PresignedDownloadRequest<ResultT> presignedDownloadRequest) {
+        throw new UnsupportedOperationException();
     }
 
     /**
