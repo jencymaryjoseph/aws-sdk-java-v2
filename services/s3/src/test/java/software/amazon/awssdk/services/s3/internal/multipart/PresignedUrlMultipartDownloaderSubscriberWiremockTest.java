@@ -52,7 +52,7 @@ import software.amazon.awssdk.services.s3.presignedurl.model.PresignedUrlDownloa
 class PresignedUrlMultipartDownloaderSubscriberWiremockTest {
 
     private static final String PRESIGNED_URL_PATH = "/presigned-url";
-    private static final byte[] TEST_DATA = randomAscii(5 * 1024 * 1024).getBytes(StandardCharsets.UTF_8);
+    private static final byte[] TEST_DATA = "This is exactly a 32 byte string".getBytes(StandardCharsets.UTF_8);
 
     private S3AsyncClient s3AsyncClient;
     private String presignedUrlBase;
@@ -215,20 +215,14 @@ class PresignedUrlMultipartDownloaderSubscriberWiremockTest {
     @Test
     void presignedUrlDownload_withContentLengthMismatch_shouldFailRequest() {
         stubResponseWithContentLengthMismatch();
-        s3AsyncClient.presignedUrlExtension()
-                     .getObject(PresignedUrlDownloadRequest.builder()
-                                                           .presignedUrl(presignedUrl)
-                                                           .build(),
-                                AsyncResponseTransformer.toBytes())
-                     .join();
-        // assertThatThrownBy(() -> s3AsyncClient.presignedUrlExtension()
-        //                                       .getObject(PresignedUrlDownloadRequest.builder()
-        //                                                                             .presignedUrl(presignedUrl)
-        //                                                                             .build(),
-        //                                                 AsyncResponseTransformer.toBytes())
-        //                                       .join())
-        //     .hasRootCauseInstanceOf(SdkClientException.class)
-        //     .hasMessageContaining("Part content length validation failed");
+        assertThatThrownBy(() -> s3AsyncClient.presignedUrlExtension()
+                                              .getObject(PresignedUrlDownloadRequest.builder()
+                                                                                    .presignedUrl(presignedUrl)
+                                                                                    .build(),
+                                                        AsyncResponseTransformer.toBytes())
+                                              .join())
+            .hasRootCauseInstanceOf(SdkClientException.class)
+            .hasMessageContaining("Part content length validation failed");
     }
 
     @AfterEach
@@ -249,13 +243,27 @@ class PresignedUrlMultipartDownloaderSubscriberWiremockTest {
     }
 
     private void stubSuccessfulPresignedUrlResponse() {
+        // Stub for first part (bytes 0-15)
         stubFor(get(urlEqualTo(PRESIGNED_URL_PATH))
+                    .withHeader("Range", matching("bytes=0-15"))
                     .willReturn(aResponse()
-                                    .withStatus(200)
+                                    .withStatus(206)
                                     .withHeader("Content-Type", "application/octet-stream")
-                                    .withHeader("Content-Length", String.valueOf(TEST_DATA.length))
+                                    .withHeader("Content-Length", "16")
+                                    .withHeader("Content-Range", "bytes 0-15/32")
                                     .withHeader("ETag", "\"test-etag\"")
-                                    .withBody(TEST_DATA)));
+                                    .withBody(Arrays.copyOfRange(TEST_DATA, 0, 16))));
+        
+        // Stub for second part (bytes 16-31)
+        stubFor(get(urlEqualTo(PRESIGNED_URL_PATH))
+                    .withHeader("Range", matching("bytes=16-31"))
+                    .willReturn(aResponse()
+                                    .withStatus(206)
+                                    .withHeader("Content-Type", "application/octet-stream")
+                                    .withHeader("Content-Length", "16")
+                                    .withHeader("Content-Range", "bytes 16-31/32")
+                                    .withHeader("ETag", "\"test-etag\"")
+                                    .withBody(Arrays.copyOfRange(TEST_DATA, 16, 32))));
     }
 
     private void stubSuccessfulRangeResponse() {
