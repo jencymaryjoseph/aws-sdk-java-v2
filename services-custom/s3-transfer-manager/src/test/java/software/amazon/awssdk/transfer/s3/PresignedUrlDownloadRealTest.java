@@ -206,26 +206,138 @@ public class PresignedUrlDownloadRealTest {
             FileDownload download = multipartTransferManager.downloadFileWithPresignedUrl(downloadRequest);
             CompletedFileDownload completed = download.completionFuture().get(60, TimeUnit.SECONDS);
             
-            // Then: Verify multipart download completed successfully
+
             assertThat(Files.exists(downloadPath)).isTrue();
             assertThat(Files.size(downloadPath)).isEqualTo(testData.length);
             assertThat(Files.readAllBytes(downloadPath)).isEqualTo(testData);
             
             System.out.println("✅ Presigned URL multipart download completed successfully");
-            System.out.println("   Downloaded " + Files.size(downloadPath) + " bytes using multipart");
-            System.out.println("   Progress: " + download.progress().snapshot());
+            System.out.println("   Downloaded " + Files.size(downloadPath) + " bytes using presigned URL multipart");
+            System.out.println("   Final Progress: " + download.progress().snapshot());
             
         } finally {
             Files.deleteIfExists(downloadPath);
-            presigner.close();
             multipartTransferManager.close();
             multipartS3Client.close();
+            presigner.close();
+        }
+    }
+
+    @Test
+    void testPresignedUrlNormalDownload() throws Exception {
+        System.out.println("=== Presigned URL Normal (Non-Multipart) Download Test ===");
+        
+        // Given: Upload test data (same large file as multipart test for comparison)
+        byte[] testData = createTestData(20 * 1024 * 1024); // 20MB
+        s3Client.putObject(builder -> builder.bucket(TEST_BUCKET).key(testKey), 
+                          RequestBody.fromBytes(testData));
+        
+        // Create normal (non-multipart) S3 client
+        S3AsyncClient normalS3Client = S3AsyncClient.builder()
+            .region(TEST_REGION)
+            .multipartEnabled(false)
+            .build();
+        
+        S3TransferManager normalTransferManager = S3TransferManager.builder()
+            .s3Client(normalS3Client)
+            .build();
+        
+        // Generate presigned URL
+        S3Presigner presigner = S3Presigner.builder().region(TEST_REGION).build();
+        PresignedGetObjectRequest presignedRequest = presigner.presignGetObject(
+            GetObjectPresignRequest.builder()
+                .signatureDuration(Duration.ofMinutes(10))
+                .getObjectRequest(GetObjectRequest.builder()
+                    .bucket(TEST_BUCKET)
+                    .key(testKey)
+                    .build())
+                .build());
+        
+        Path downloadPath = Files.createTempFile("presigned-normal-test", ".dat");
+        
+        try {
+            // When: Download using presigned URL with normal (non-multipart) client
+            PresignedDownloadFileRequest downloadRequest = PresignedDownloadFileRequest.builder()
+                .presignedUrlDownloadRequest(PresignedUrlDownloadRequest.builder()
+                    .presignedUrl(presignedRequest.url())
+                    .build())
+                .destination(downloadPath)
+                .addTransferListener(LoggingTransferListener.create())
+                .build();
+            
+            FileDownload download = normalTransferManager.downloadFileWithPresignedUrl(downloadRequest);
+            CompletedFileDownload completed = download.completionFuture().get(60, TimeUnit.SECONDS);
+            
+            // Then: Verify normal download completed
+            assertThat(Files.exists(downloadPath)).isTrue();
+            assertThat(Files.size(downloadPath)).isEqualTo(testData.length);
+            assertThat(Files.readAllBytes(downloadPath)).isEqualTo(testData);
+            
+            System.out.println("✅ Presigned URL normal download completed successfully");
+            System.out.println("   Downloaded " + Files.size(downloadPath) + " bytes using presigned URL normal client");
+            System.out.println("   Final Progress: " + download.progress().snapshot());
+            
+        } finally {
+            Files.deleteIfExists(downloadPath);
+            normalTransferManager.close();
+            normalS3Client.close();
+            presigner.close();
+        }
+    }
+
+    @Test
+    void testNormalDownloadWithoutPresignedUrl() throws Exception {
+        System.out.println("=== Normal (Non-Multipart) Download Without Presigned URL Test ===");
+        
+        // Given: Upload test data (same large file for comparison)
+        byte[] testData = createTestData(20 * 1024 * 1024); // 20MB
+        s3Client.putObject(builder -> builder.bucket(TEST_BUCKET).key(testKey), 
+                          RequestBody.fromBytes(testData));
+        
+        // Create normal (non-multipart) S3 client
+        S3AsyncClient normalS3Client = S3AsyncClient.builder()
+            .region(TEST_REGION)
+            .multipartEnabled(false)
+            .build();
+        
+        S3TransferManager normalTransferManager = S3TransferManager.builder()
+            .s3Client(normalS3Client)
+            .build();
+        
+        Path downloadPath = Files.createTempFile("normal-download-test", ".dat");
+        
+        try {
+            // When: Download using normal Transfer Manager (no presigned URL)
+            DownloadFileRequest downloadRequest = DownloadFileRequest.builder()
+                .getObjectRequest(GetObjectRequest.builder()
+                    .bucket(TEST_BUCKET)
+                    .key(testKey)
+                    .build())
+                .destination(downloadPath)
+                .addTransferListener(LoggingTransferListener.create())
+                .build();
+            
+            FileDownload download = normalTransferManager.downloadFile(downloadRequest);
+            CompletedFileDownload completed = download.completionFuture().get(60, TimeUnit.SECONDS);
+            
+            // Then: Verify normal download completed
+            assertThat(Files.exists(downloadPath)).isTrue();
+            assertThat(Files.size(downloadPath)).isEqualTo(testData.length);
+            assertThat(Files.readAllBytes(downloadPath)).isEqualTo(testData);
+            
+            System.out.println("✅ Normal download (without presigned URL) completed successfully");
+            System.out.println("   Downloaded " + Files.size(downloadPath) + " bytes using normal client");
+            System.out.println("   Final Progress: " + download.progress().snapshot());
+            
+        } finally {
+            Files.deleteIfExists(downloadPath);
+            normalTransferManager.close();
+            normalS3Client.close();
         }
     }
 
     private byte[] createTestData(int size) {
         byte[] data = new byte[size];
-        // Create a simple repeating pattern
         for (int i = 0; i < size; i++) {
             data[i] = (byte) (i % 256);
         }

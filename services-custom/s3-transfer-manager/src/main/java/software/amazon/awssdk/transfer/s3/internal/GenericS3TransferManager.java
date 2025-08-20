@@ -577,8 +577,10 @@ class GenericS3TransferManager implements S3TransferManager {
         TransferProgressUpdater progressUpdater = new TransferProgressUpdater(presignedDownloadFileRequest, null);
         progressUpdater.transferInitiated();
 
-        responseTransformer = progressUpdater.wrapResponseTransformerForMultipartDownload(
-            responseTransformer, GetObjectRequest.builder().build());
+        responseTransformer = isS3ClientMultipartEnabled()
+                              ? progressUpdater.wrapResponseTransformerForMultipartDownload(
+            responseTransformer, GetObjectRequest.builder().build())
+                              : progressUpdater.wrapResponseTransformer(responseTransformer);
         progressUpdater.registerCompletion(returnFuture);
 
         try {
@@ -609,8 +611,10 @@ class GenericS3TransferManager implements S3TransferManager {
         TransferProgressUpdater progressUpdater = new TransferProgressUpdater(presignedDownloadRequest, null);
         progressUpdater.transferInitiated();
 
-        responseTransformer = progressUpdater.wrapResponseTransformerForMultipartDownload(
-            responseTransformer, GetObjectRequest.builder().build());
+        responseTransformer = isS3ClientMultipartEnabled()
+                              ? progressUpdater.wrapResponseTransformerForMultipartDownload(
+            responseTransformer, GetObjectRequest.builder().build())
+                              : progressUpdater.wrapResponseTransformer(responseTransformer);
         progressUpdater.registerCompletion(returnFuture);
 
         try {
