@@ -240,7 +240,6 @@ class GenericS3TransferManager implements S3TransferManager {
         return s3AsyncClient instanceof MultipartS3AsyncClient;
     }
 
-
     /**
      * Can be overridden by subclasses to provide different implementation
      */

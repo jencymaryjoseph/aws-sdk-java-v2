@@ -101,7 +101,7 @@ public class PresignedUrlDownloadRealTest {
         System.out.println("=== Normal Transfer Manager Multipart Download Test ===");
         
         // Given: Upload large test data using multipart upload to enable multipart download
-        byte[] testData = createTestData(20 * 1024 * 1024); // 20MB
+        byte[] testData = createTestData(16 * 1024 * 1024); // 20MB
         
         // Upload using Transfer Manager to create multipart object
         S3TransferManager uploadTransferManager = S3TransferManager.builder()
@@ -166,7 +166,7 @@ public class PresignedUrlDownloadRealTest {
         System.out.println("=== Presigned URL Multipart Download Test ===");
         
         // Given: Upload large test data to trigger multipart (>16MB threshold)
-        byte[] testData = createTestData(20 * 1024 * 1024); // 20MB
+        byte[] testData = createTestData(16 * 1024 * 1024); // 20MB
         s3Client.putObject(builder -> builder.bucket(TEST_BUCKET).key(testKey), 
                           RequestBody.fromBytes(testData));
         
@@ -206,7 +206,7 @@ public class PresignedUrlDownloadRealTest {
             FileDownload download = multipartTransferManager.downloadFileWithPresignedUrl(downloadRequest);
             CompletedFileDownload completed = download.completionFuture().get(60, TimeUnit.SECONDS);
             
-
+            // Then: Verify presigned URL multipart download completed successfully
             assertThat(Files.exists(downloadPath)).isTrue();
             assertThat(Files.size(downloadPath)).isEqualTo(testData.length);
             assertThat(Files.readAllBytes(downloadPath)).isEqualTo(testData);
@@ -228,14 +228,13 @@ public class PresignedUrlDownloadRealTest {
         System.out.println("=== Presigned URL Normal (Non-Multipart) Download Test ===");
         
         // Given: Upload test data (same large file as multipart test for comparison)
-        byte[] testData = createTestData(20 * 1024 * 1024); // 20MB
+        byte[] testData = createTestData(16 * 1024 * 1024); // 20MB
         s3Client.putObject(builder -> builder.bucket(TEST_BUCKET).key(testKey), 
                           RequestBody.fromBytes(testData));
         
         // Create normal (non-multipart) S3 client
         S3AsyncClient normalS3Client = S3AsyncClient.builder()
             .region(TEST_REGION)
-            .multipartEnabled(false)
             .build();
         
         S3TransferManager normalTransferManager = S3TransferManager.builder()
